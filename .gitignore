@@ -1,2 +1,2 @@
-bin
-GenerateProjects.bat
+build
+GenerateProjectFiles.bat

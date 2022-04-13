@@ -2,3 +2,11 @@
 	path = 3rdparty/volk
 	url = https://github.com/zeux/volk.git
 	branch = master
+[submodule "3rdparty/glfw"]
+	path = 3rdparty/glfw
+	url = https://github.com/glfw/glfw
+	branch = master
+[submodule "3rdparty/glm"]
+	path = 3rdparty/glm
+	url = https://github.com/g-truc/glm
+	branch = master
