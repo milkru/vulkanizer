@@ -17,6 +17,10 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG_>)
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:RELEASE_>)
 
+if (MSVC)
+	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
+endif()
+
 if (MINGW)
 	set(CMAKE_EXE_LINKER_FLAGS " -static")
 	target_link_libraries(${PROJECT_NAME} PRIVATE -static-libgcc -static-libstdc++)
@@ -42,8 +46,8 @@ if (MSVC)
 		COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_BINARY_DIR}/shaders" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders")
 endif()
 
-# GLFW
-message("Adding GLFW:")
+# glfw
+message("Adding glfw:")
 
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "")
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "")
@@ -57,16 +61,35 @@ target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
 set_property(TARGET glfw PROPERTY FOLDER "3rdparty/glfw")
 set_property(TARGET update_mappings PROPERTY FOLDER "3rdparty/glfw")
 
-# GLM
-message("Adding GLM:")
+# glm
+message("Adding glm:")
 
 target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/glm")
 
-# Volk
-message("Adding Volk:")
+# volk
+message("Adding volk:")
 
 add_subdirectory("3rdparty/volk")
 target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/volk")
 target_link_libraries(${PROJECT_NAME} PRIVATE volk)
 
 set_property(TARGET volk PROPERTY FOLDER "3rdparty")
+
+# tinyobjloader
+message("Adding tinyobjloader:")
+
+add_subdirectory("3rdparty/tinyobjloader")
+target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/tinyobjloader")
+target_link_libraries(${PROJECT_NAME} PRIVATE tinyobjloader)
+
+set_property(TARGET tinyobjloader PROPERTY FOLDER "3rdparty/tinyobjloader")
+set_property(TARGET uninstall PROPERTY FOLDER "3rdparty/tinyobjloader")
+
+# meshoptimizer
+message("Adding meshoptimizer:")
+
+add_subdirectory("3rdparty/meshoptimizer")
+target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/meshoptimizer/src")
+target_link_libraries(${PROJECT_NAME} PRIVATE meshoptimizer)
+
+set_property(TARGET meshoptimizer PROPERTY FOLDER "3rdparty")

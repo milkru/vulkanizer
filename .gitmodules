@@ -10,3 +10,11 @@
 	path = 3rdparty/glm
 	url = https://github.com/g-truc/glm
 	branch = master
+[submodule "3rdparty/tinyobjloader"]
+	path = 3rdparty/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader.git
+	branch = master
+[submodule "3rdparty/meshoptimizer"]
+	path = 3rdparty/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git
+	branch = master

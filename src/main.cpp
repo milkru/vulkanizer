@@ -1,18 +1,24 @@
-#include <volk.h>
-#include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
-
 #include <vector>
 #include <array>
 #include <string.h>
 #include <stdio.h>
 
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+
+#include <volk.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <meshoptimizer.h>
+
+#ifndef VK_CALL
 #define VK_CALL(_call) \
 	do { \
 		VkResult result_ = _call; \
 		assert(result_ == VK_SUCCESS); \
 	} \
 	while (0)
+#endif
 
 #ifndef MIN
 #define MIN(_a, _b) (((_a) < (_b)) ? (_a) : (_b))
@@ -46,30 +52,41 @@ const uint32_t kMaxFramesInFlightCount = 2;
 
 struct Swapchain
 {
-	VkSwapchainKHR swapchain;
+	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+	VkFormat imageFormat = VK_FORMAT_UNDEFINED;
+	VkExtent2D extent = {};
 	std::vector<VkImage> images;
 	std::vector<VkImageView> imageViews;
-	VkFormat imageFormat;
-	VkExtent2D extent;
-};
-
-struct Buffer
-{
-	VkBuffer buffer;
-	VkDeviceMemory memory;
-};
-
-struct Vertex
-{
-	glm::vec2 position;
-	glm::vec3 color;
 };
 
 struct FramePacing
 {
-	VkSemaphore imageAvailableSemaphore;
-	VkSemaphore renderFinishedSemaphore;
-	VkFence inFlightFence;
+	VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
+	VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
+	VkFence inFlightFence = VK_NULL_HANDLE;
+};
+
+struct Buffer
+{
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	size_t size = 0;
+	void* data = nullptr;
+};
+
+struct Vertex
+{
+	uint16_t position[3];
+	// TODO-MILKRU: Consider passing only two components of a normal vector and
+	// reconstruct the third one using the cross product in order to further save memory.
+	uint8_t normal[3];
+	uint16_t texCoord[2];
+};
+
+struct Mesh
+{
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
 };
 
 static VkVertexInputBindingDescription getVertexBindingDescription()
@@ -82,19 +99,24 @@ static VkVertexInputBindingDescription getVertexBindingDescription()
 	return vertexBindingDescription;
 }
 
-static std::array<VkVertexInputAttributeDescription, 2> getVertexAttributeDescriptions()
+static std::array<VkVertexInputAttributeDescription, 3> getVertexAttributeDescriptions()
 {
-	std::array<VkVertexInputAttributeDescription, 2> vertexAttributeDescriptions{};
+	std::array<VkVertexInputAttributeDescription, 3> vertexAttributeDescriptions{};
 
 	vertexAttributeDescriptions[0].binding = 0;
 	vertexAttributeDescriptions[0].location = 0;
-	vertexAttributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+	vertexAttributeDescriptions[0].format = VK_FORMAT_R16G16B16_SFLOAT;
 	vertexAttributeDescriptions[0].offset = offsetof(Vertex, position);
 
 	vertexAttributeDescriptions[1].binding = 0;
 	vertexAttributeDescriptions[1].location = 1;
-	vertexAttributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributeDescriptions[1].offset = offsetof(Vertex, color);
+	vertexAttributeDescriptions[1].format = VK_FORMAT_R8G8B8_SNORM;
+	vertexAttributeDescriptions[1].offset = offsetof(Vertex, normal);
+
+	vertexAttributeDescriptions[2].binding = 0;
+	vertexAttributeDescriptions[2].location = 2;
+	vertexAttributeDescriptions[2].format = VK_FORMAT_R16G16_SFLOAT;
+	vertexAttributeDescriptions[2].offset = offsetof(Vertex, texCoord);
 
 	return vertexAttributeDescriptions;
 }
@@ -313,7 +335,7 @@ static VkPresentModeKHR chooseSwapchainPresentMode(
 	{
 		if (kEnableVSync)
 		{
-			// TODO: Which one should be used for VSync, VK_PRESENT_MODE_FIFO_KHR or VK_PRESENT_MODE_MAILBOX_KHR?
+			// TODO-MILKRU: Which one should be used for VSync, VK_PRESENT_MODE_FIFO_KHR or VK_PRESENT_MODE_MAILBOX_KHR?
 			if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
 			{
 				return availablePresentMode;
@@ -456,14 +478,16 @@ static Swapchain createSwapchain(
 
 static void destroySwapchain(
 	VkDevice _device,
-	Swapchain _swapchain)
+	Swapchain& _rSwapchain)
 {
-	for (VkImageView imageView : _swapchain.imageViews)
+	for (VkImageView imageView : _rSwapchain.imageViews)
 	{
 		vkDestroyImageView(_device, imageView, nullptr);
 	}
 
-	vkDestroySwapchainKHR(_device, _swapchain.swapchain, nullptr);
+	vkDestroySwapchainKHR(_device, _rSwapchain.swapchain, nullptr);
+
+	_rSwapchain = {};
 }
 
 static VkRenderPass createRenderPass(
@@ -544,7 +568,7 @@ static VkPipeline createGraphicsPipeline(
 	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = { vertexShaderStageICreatenfo, fragmentShaderStageCreateInfo };
 
 	VkVertexInputBindingDescription bindingDescription = getVertexBindingDescription();
-	std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions = getVertexAttributeDescriptions();
+	std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions = getVertexAttributeDescriptions();
 
 	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
@@ -670,9 +694,9 @@ static uint32_t tryFindMemoryType(
 static Buffer createBuffer(
 	VkPhysicalDevice _physicalDevice,
 	VkDevice _device,
-	VkDeviceSize _size,
 	VkBufferUsageFlags _usageFlags,
-	VkMemoryPropertyFlags _memoryFlags)
+	VkMemoryPropertyFlags _memoryFlags,
+	VkDeviceSize _size)
 {
 	VkBufferCreateInfo bufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	bufferCreateInfo.size = _size;
@@ -681,6 +705,8 @@ static Buffer createBuffer(
 
 	Buffer buffer{};
 	VK_CALL(vkCreateBuffer(_device, &bufferCreateInfo, nullptr, &buffer.buffer));
+
+	buffer.size = _size;
 
 	VkMemoryRequirements memoryRequirements;
 	vkGetBufferMemoryRequirements(_device, buffer.buffer, &memoryRequirements);
@@ -695,6 +721,12 @@ static Buffer createBuffer(
 	VK_CALL(vkAllocateMemory(_device, &allocateInfo, nullptr, &buffer.memory));
 
 	vkBindBufferMemory(_device, buffer.buffer, buffer.memory, 0);
+
+	if (_memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+	{
+		// Persistently mapped memory, which should be faster on NVidia.
+		vkMapMemory(_device, buffer.memory, 0, _size, 0, &buffer.data);
+	}
 
 	return buffer;
 }
@@ -745,39 +777,49 @@ static void copyBuffer(
 	vkFreeCommandBuffers(_device, _commandPool, 1, &commandBuffer);
 }
 
+static void destroyBuffer(
+	VkDevice _device,
+	Buffer& _rBuffer)
+{
+	if (_rBuffer.data)
+	{
+		vkUnmapMemory(_device, _rBuffer.memory);
+	}
+
+	vkDestroyBuffer(_device, _rBuffer.buffer, nullptr);
+	vkFreeMemory(_device, _rBuffer.memory, nullptr);
+
+	_rBuffer = {};
+}
+
+// NOTE-MILKRU: Use one big buffer for sub allocation.
 static Buffer createBuffer(
 	VkPhysicalDevice _physicalDevice,
 	VkDevice _device,
 	VkQueue _queue,
 	VkCommandPool _commandPool,
+	VkBufferUsageFlags _usageFlags,
 	VkDeviceSize _size,
-	void* _pContents,
-	VkBufferUsageFlags _usageFlags)
+	void* _pContents = nullptr)
 {
-	Buffer stagingBuffer = createBuffer(_physicalDevice, _device, _size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	if (_pContents)
+	{
+		_usageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	}
 
-	void* data;
-	vkMapMemory(_device, stagingBuffer.memory, 0, _size, 0, &data);
-	memcpy(data, _pContents, (size_t)_size);
-	vkUnmapMemory(_device, stagingBuffer.memory);
+	Buffer buffer = createBuffer(_physicalDevice, _device, _usageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, _size);
 
-	Buffer buffer = createBuffer(_physicalDevice, _device, _size, _usageFlags | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	if (_pContents)
+	{
+		Buffer stagingBuffer = createBuffer(_physicalDevice, _device, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, _size);
 
-	copyBuffer(_device, _queue, _commandPool, stagingBuffer.buffer, buffer.buffer, _size);
-
-	vkDestroyBuffer(_device, stagingBuffer.buffer, nullptr);
-	vkFreeMemory(_device, stagingBuffer.memory, nullptr);
+		memcpy(stagingBuffer.data, _pContents, stagingBuffer.size);
+		copyBuffer(_device, _queue, _commandPool, stagingBuffer.buffer, buffer.buffer, _size);
+		destroyBuffer(_device, stagingBuffer);
+	}
 
 	return buffer;
-}
-
-static void destroyBuffer(
-	VkDevice _device,
-	Buffer _buffer)
-{
-	vkDestroyBuffer(_device, _buffer.buffer, nullptr);
-	vkFreeMemory(_device, _buffer.memory, nullptr);
 }
 
 static VkSemaphore createSemaphore(
@@ -825,11 +867,11 @@ static void destroyFramePacing(
 static VkShaderModule createShaderModule(
 	VkDevice _device,
 	size_t _spvCodeSize,
-	uint32_t* _spvCode)
+	uint32_t* _pSpvCode)
 {
 	VkShaderModuleCreateInfo shaderModuleCreateInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
 	shaderModuleCreateInfo.codeSize = _spvCodeSize;
-	shaderModuleCreateInfo.pCode = _spvCode;
+	shaderModuleCreateInfo.pCode = _pSpvCode;
 
 	VkShaderModule shaderModule;
 	VK_CALL(vkCreateShaderModule(_device, &shaderModuleCreateInfo, nullptr, &shaderModule));
@@ -838,9 +880,9 @@ static VkShaderModule createShaderModule(
 }
 
 static std::vector<uint8_t> readFile(
-	const char* _filePath)
+	const char* _pFilePath)
 {
-	FILE* file = fopen(_filePath, "rb");
+	FILE* file = fopen(_pFilePath, "rb");
 	assert(file != nullptr);
 
 	fseek(file, 0L, SEEK_END);
@@ -854,8 +896,92 @@ static std::vector<uint8_t> readFile(
 	return fileContents;
 }
 
+Mesh loadMesh(
+	const char* _pFilePath)
+{
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+	std::string warning, error;
+
+	{
+		bool result = tinyobj::LoadObj(&attrib, &shapes, &materials, &warning, &error, _pFilePath);
+		assert(result);
+	}
+
+	// TODO-MILKRU: Meshes with multiple sections (shapes) are not supported yet.
+	assert(shapes.size() == 1);
+
+	tinyobj::mesh_t& shapeMesh = shapes[0].mesh;
+	size_t indexCount = shapeMesh.indices.size();
+
+	Mesh mesh;
+	mesh.vertices.reserve(indexCount);
+
+	// Using various mesh optimizations from meshoptimizer.
+	// https://github.com/zeux/meshoptimizer
+	for (const auto& index : shapeMesh.indices)
+	{
+		Vertex vertex{};
+
+		vertex.position[0] = meshopt_quantizeHalf(attrib.vertices[3 * index.vertex_index + 0]);
+		vertex.position[1] = meshopt_quantizeHalf(attrib.vertices[3 * index.vertex_index + 1]);
+		vertex.position[2] = meshopt_quantizeHalf(attrib.vertices[3 * index.vertex_index + 2]);
+
+		vertex.normal[0] = meshopt_quantizeSnorm(index.normal_index < 0 ? 0.0f :
+			attrib.normals[3 * index.normal_index + 0], 8);
+		vertex.normal[1] = meshopt_quantizeSnorm(index.normal_index < 0 ? 1.0f :
+			attrib.normals[3 * index.normal_index + 1], 8);
+		vertex.normal[2] = meshopt_quantizeSnorm(index.normal_index < 0 ? 0.0f :
+			attrib.normals[3 * index.normal_index + 2], 8);
+
+		vertex.texCoord[0] = meshopt_quantizeHalf(index.texcoord_index < 0 ? 0.0f :
+			attrib.texcoords[2 * index.texcoord_index + 0]);
+		vertex.texCoord[1] = meshopt_quantizeHalf(index.texcoord_index < 0 ? 0.0f :
+			1.0f - attrib.texcoords[2 * index.texcoord_index + 1]);
+
+		mesh.vertices.push_back(vertex);
+	}
+
+	if (true)
+	{
+		std::vector<uint32_t> remapTable(indexCount);
+		size_t vertexCount = meshopt_generateVertexRemap(remapTable.data(), nullptr, indexCount,
+			mesh.vertices.data(), mesh.vertices.size(), sizeof(Vertex));
+
+		mesh.vertices.resize(vertexCount);
+		mesh.indices.resize(indexCount);
+
+		meshopt_remapVertexBuffer(mesh.vertices.data(), mesh.vertices.data(), indexCount, sizeof(Vertex), remapTable.data());
+		meshopt_remapIndexBuffer(mesh.indices.data(), nullptr, indexCount, remapTable.data());
+
+		if (true) // TODO-MILKRU: Do a performance sanity check for this.
+		{
+			meshopt_optimizeVertexCache(mesh.indices.data(), mesh.indices.data(), indexCount, vertexCount);
+			// TODO-MILKRU: meshopt_optimizeOverdraw does not support 16 bit vertex positions.
+			meshopt_optimizeVertexFetch(mesh.vertices.data(), mesh.indices.data(), indexCount, mesh.vertices.data(), vertexCount, sizeof(Vertex));
+		}
+	}
+	else // TODO-MILKRU: Do a performance sanity check for this.
+	{
+		mesh.indices.resize(indexCount);
+		for (size_t i = 0; i < indexCount; ++i)
+		{
+			mesh.indices[i] = uint32_t(i);
+		}
+	}
+
+	return mesh;
+}
+
 int main(int argc, const char** argv)
 {
+	if (argc != 2)
+	{
+		printf("Mesh path is required as a command line argument.\n");
+		return 1;
+	}
+
 	GLFWwindow* pWindow = nullptr;
 	{
 		if (!glfwInit())
@@ -932,22 +1058,14 @@ int main(int argc, const char** argv)
 
 	VkCommandPool commandPool = createCommandPool(device, graphicsQueueIndex);
 
-	const Vertex vertices[] =
-	{
-		{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-		{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-		{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-		{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
-	};
+	const char* meshPath = argv[1];
+	Mesh mesh = loadMesh(meshPath);
 
-	Buffer vertexBuffer = createBuffer(physicalDevice, device, graphicsQueue, commandPool, sizeof(vertices), (void*)vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-
-	const uint16_t indices[] =
-	{
-		0, 1, 2, 2, 3, 0
-	};
-
-	Buffer indexBuffer = createBuffer(physicalDevice, device, graphicsQueue, commandPool, sizeof(indices), (void*)indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+	Buffer vertexBuffer = createBuffer(physicalDevice, device, graphicsQueue, commandPool,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, sizeof(Vertex) * mesh.vertices.size(), mesh.vertices.data());
+	
+	Buffer indexBuffer = createBuffer(physicalDevice, device, graphicsQueue, commandPool,
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT, sizeof(uint32_t) * mesh.indices.size(), mesh.indices.data());
 
 	std::vector<VkCommandBuffer> commandBuffers(kMaxFramesInFlightCount);
 	std::vector<FramePacing> framePacings(kMaxFramesInFlightCount);
@@ -1008,36 +1126,38 @@ int main(int argc, const char** argv)
 
 		{
 			vkResetCommandBuffer(commandBuffer, 0);
-			VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+			VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 
-			VK_CALL(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+			VK_CALL(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
 
-			VkRenderPassBeginInfo renderPassInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-			renderPassInfo.renderPass = renderPass;
-			renderPassInfo.framebuffer = framebuffers[imageIndex];
-			renderPassInfo.renderArea.offset = { 0, 0 };
-			renderPassInfo.renderArea.extent = swapchain.extent;
+			VkRenderPassBeginInfo renderPassBeginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+			renderPassBeginInfo.renderPass = renderPass;
+			renderPassBeginInfo.framebuffer = framebuffers[imageIndex];
+			renderPassBeginInfo.renderArea.offset = { 0, 0 };
+			renderPassBeginInfo.renderArea.extent = swapchain.extent;
 
 			VkClearValue clearColor = { {{ 34.0f / 255.0f, 34.0f / 255.0f, 29.0f / 255.0f, 1.0f }} };
-			renderPassInfo.clearValueCount = 1;
-			renderPassInfo.pClearValues = &clearColor;
+			renderPassBeginInfo.clearValueCount = 1;
+			renderPassBeginInfo.pClearValues = &clearColor;
 
-			vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+			// Flipped viewport.
+			// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
 			VkViewport viewport{};
 			viewport.x = 0.0f;
-			viewport.y = 0.0f;
+			viewport.y = float(swapchain.extent.height);
 			viewport.width = float(swapchain.extent.width);
-			viewport.height = float(swapchain.extent.height);
+			viewport.height = -float(swapchain.extent.height);
 			viewport.minDepth = 0.0f;
 			viewport.maxDepth = 1.0f;
 
-			VkRect2D scissor{};
-			scissor.offset = { 0, 0 };
-			scissor.extent = swapchain.extent;
+			VkRect2D scissorRect{};
+			scissorRect.offset = { 0, 0 };
+			scissorRect.extent = swapchain.extent;
 
 			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+			vkCmdSetScissor(commandBuffer, 0, 1, &scissorRect);
 
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
@@ -1045,9 +1165,9 @@ int main(int argc, const char** argv)
 			VkDeviceSize offsets[] = { 0 };
 			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-			vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+			vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-			vkCmdDrawIndexed(commandBuffer, ARRAY_SIZE(indices), 1, 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, uint32_t(mesh.indices.size()), 1, 0, 0, 0);
 
 			vkCmdEndRenderPass(commandBuffer);
 
