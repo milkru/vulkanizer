@@ -18,3 +18,7 @@
 	path = 3rdparty/meshoptimizer
 	url = https://github.com/zeux/meshoptimizer.git
 	branch = master
+[submodule "3rdparty/easy_profiler"]
+	path = 3rdparty/easy_profiler
+	url = https://github.com/yse/easy_profiler
+	branch = develop

@@ -1,63 +1,28 @@
-#include <vector>
-#include <array>
-#include <string.h>
-#include <stdio.h>
+#include "common.h"
+#include "swapchain.h"
+#include "query.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
-
-#include <volk.h>
-#include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
 #include <meshoptimizer.h>
+#include <easy/profiler.h>
 
-#ifndef VK_CALL
-#define VK_CALL(_call) \
-	do { \
-		VkResult result_ = _call; \
-		assert(result_ == VK_SUCCESS); \
-	} \
-	while (0)
-#endif
-
-#ifndef MIN
-#define MIN(_a, _b) (((_a) < (_b)) ? (_a) : (_b))
-#endif
-
-#ifndef MAX
-#define MAX(_a, _b) (((_b) < (_a)) ? (_a) : (_b))
-#endif
-
-#ifndef CLAMP
-#define CLAMP(_val, _min, _max) ((_val) < (_min) ? (_min) : (_val) > (_max) ? (_max) : (_val))
-#endif
-
-#ifndef ARRAY_SIZE
-#define ARRAY_SIZE(_arr) ((int)(sizeof(_arr) / sizeof(*(_arr))))
-#endif
+#include <string.h>
+#include <stdio.h>
+#include <chrono>
 
 #ifdef DEBUG_
-const bool kEnableValidationLayers = true;
+const bool kbEnableValidationLayers = true;
 #else
-const bool kEnableValidationLayers = false;
+const bool kbEnableValidationLayers = false;
 #endif
-
-const bool kEnableVSync = true;
 
 const uint32_t kWindowWidth = 1280;
 const uint32_t kWindowHeight = 720;
 
-const uint32_t kPreferredSwapchainImageCount = 2;
 const uint32_t kMaxFramesInFlightCount = 2;
 
-struct Swapchain
-{
-	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-	VkFormat imageFormat = VK_FORMAT_UNDEFINED;
-	VkExtent2D extent = {};
-	std::vector<VkImage> images;
-	std::vector<VkImageView> imageViews;
-};
+char windowTitle[256] = "proto_vk";
 
 struct FramePacing
 {
@@ -68,7 +33,7 @@ struct FramePacing
 
 struct Buffer
 {
-	VkBuffer buffer = VK_NULL_HANDLE;
+	VkBuffer bufferVk = VK_NULL_HANDLE;
 	VkDeviceMemory memory = VK_NULL_HANDLE;
 	size_t size = 0;
 	void* data = nullptr;
@@ -88,6 +53,30 @@ struct Mesh
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
 };
+
+static GLFWwindow* createWindow()
+{
+	if (!glfwInit())
+	{
+		assert(!"GLFW not initialized properly!");
+	}
+
+	if (!glfwVulkanSupported())
+	{
+		assert(!"Vulkan is not supported!");
+	}
+
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+	GLFWwindow* pWindow = glfwCreateWindow(kWindowWidth, kWindowHeight, windowTitle, nullptr, nullptr);
+	if (pWindow == nullptr)
+	{
+		glfwTerminate();
+		assert(!"Window creation failed!");
+	}
+
+	return pWindow;
+}
 
 static VkVertexInputBindingDescription getVertexBindingDescription()
 {
@@ -146,12 +135,12 @@ static VkInstance createInstance()
 	applicationInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 	applicationInfo.pEngineName = "proto_vk";
 	applicationInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	applicationInfo.apiVersion = VK_API_VERSION_1_1;
+	applicationInfo.apiVersion = VK_API_VERSION_1_2;
 
 	VkInstanceCreateInfo instanceCreateInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	instanceCreateInfo.pApplicationInfo = &applicationInfo;
 
-	if (kEnableValidationLayers)
+	if (kbEnableValidationLayers)
 	{
 		instanceCreateInfo.enabledLayerCount = ARRAY_SIZE(validationLayers);
 		instanceCreateInfo.ppEnabledLayerNames = validationLayers;
@@ -253,9 +242,9 @@ static VkPhysicalDevice tryPickPhysicalDevice(
 			continue;
 		}
 
-		VkBool32 surfaceSupported;
-		vkGetPhysicalDeviceSurfaceSupportKHR(potentialPhysicalDevice, graphicsQueueIndex, _surface, &surfaceSupported);
-		if (surfaceSupported == VK_FALSE)
+		VkBool32 bSurfaceSupported;
+		vkGetPhysicalDeviceSurfaceSupportKHR(potentialPhysicalDevice, graphicsQueueIndex, _surface, &bSurfaceSupported);
+		if (bSurfaceSupported == VK_FALSE)
 		{
 			continue;
 		}
@@ -284,8 +273,13 @@ static VkDevice createDevice(
 
 	VkPhysicalDeviceFeatures deviceFeatures{};
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
+	deviceFeatures.pipelineStatisticsQuery = VK_TRUE;
+
+	// TODO-MILKRU: Remember that SPV_KHR_8bit_storage is in VK_VERSION_1_2 core.
+	VkPhysicalDeviceVulkan12Features physicalDeviceFeatures12 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
 
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
+	deviceCreateInfo.pNext = &physicalDeviceFeatures12;
 	deviceCreateInfo.queueCreateInfoCount = 1;
 	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
@@ -296,198 +290,6 @@ static VkDevice createDevice(
 	VK_CALL(vkCreateDevice(_physicalDevice, &deviceCreateInfo, nullptr, &device));
 
 	return device;
-}
-
-static VkSurfaceFormatKHR chooseSwapchainSurfaceFormat(
-	VkSurfaceKHR _surface,
-	VkPhysicalDevice _physicalDevice)
-{
-	uint32_t surfaceFormatCount = 0;
-	VK_CALL(vkGetPhysicalDeviceSurfaceFormatsKHR(_physicalDevice, _surface, &surfaceFormatCount, nullptr));
-
-	assert(surfaceFormatCount > 0);
-
-	std::vector<VkSurfaceFormatKHR> availableSurfaceFormats(surfaceFormatCount);
-	VK_CALL(vkGetPhysicalDeviceSurfaceFormatsKHR(_physicalDevice, _surface, &surfaceFormatCount, availableSurfaceFormats.data()));
-
-	for (const auto& availableSurfaceFormat : availableSurfaceFormats)
-	{
-		if (availableSurfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM)
-		{
-			return availableSurfaceFormat;
-		}
-	}
-
-	return availableSurfaceFormats[0];
-}
-
-static VkPresentModeKHR chooseSwapchainPresentMode(
-	VkSurfaceKHR _surface,
-	VkPhysicalDevice _physicalDevice)
-{
-	uint32_t presentModeCount = 0;
-	VK_CALL(vkGetPhysicalDeviceSurfacePresentModesKHR(_physicalDevice, _surface, &presentModeCount, nullptr));
-
-	std::vector<VkPresentModeKHR> availablePresentModes(presentModeCount);
-	VK_CALL(vkGetPhysicalDeviceSurfacePresentModesKHR(_physicalDevice, _surface, &presentModeCount, availablePresentModes.data()));
-
-	for (const auto& availablePresentMode : availablePresentModes)
-	{
-		if (kEnableVSync)
-		{
-			// TODO-MILKRU: Which one should be used for VSync, VK_PRESENT_MODE_FIFO_KHR or VK_PRESENT_MODE_MAILBOX_KHR?
-			if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
-			{
-				return availablePresentMode;
-			}
-		}
-		else
-		{
-			if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
-			{
-				return availablePresentMode;
-			}
-		}
-	}
-
-	return VK_PRESENT_MODE_FIFO_KHR;
-}
-
-static VkExtent2D chooseSwapchainExtent(
-	VkSurfaceKHR _surface,
-	VkPhysicalDevice _physicalDevice,
-	GLFWwindow* _pWindow)
-{
-	VkSurfaceCapabilitiesKHR surfaceCapabilities;
-	VK_CALL(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_physicalDevice, _surface, &surfaceCapabilities));
-
-	if (surfaceCapabilities.currentExtent.width != UINT32_MAX && surfaceCapabilities.currentExtent.height != UINT32_MAX)
-	{
-		return surfaceCapabilities.currentExtent;
-	}
-
-	int windowWidth, windowHeight;
-	glfwGetFramebufferSize(_pWindow, &windowWidth, &windowHeight);
-
-	VkExtent2D actualExtent = { uint32_t(windowWidth), uint32_t(windowHeight) };
-
-	VkExtent2D minImageExtent = surfaceCapabilities.minImageExtent;
-	VkExtent2D maxImageExtent = surfaceCapabilities.maxImageExtent;
-
-	actualExtent.width = CLAMP(actualExtent.width, minImageExtent.width, maxImageExtent.width);
-	actualExtent.height = CLAMP(actualExtent.height, minImageExtent.height, maxImageExtent.height);
-
-	return actualExtent;
-}
-
-static VkSwapchainKHR createSwapchain(
-	VkSurfaceKHR _surface,
-	VkPhysicalDevice _physicalDevice,
-	VkDevice _device,
-	VkSurfaceFormatKHR _surfaceFormat,
-	VkPresentModeKHR _presentMode,
-	VkExtent2D _extent,
-	VkSwapchainKHR _oldSwapchain)
-{
-	VkSurfaceCapabilitiesKHR surfaceCapabilities;
-	VK_CALL(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_physicalDevice, _surface, &surfaceCapabilities));
-
-	uint32_t minImageCount = CLAMP(kPreferredSwapchainImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount);
-
-	VkSwapchainCreateInfoKHR swapchainCreateInfo = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
-	swapchainCreateInfo.surface = _surface;
-	swapchainCreateInfo.minImageCount = minImageCount;
-	swapchainCreateInfo.imageFormat = _surfaceFormat.format;
-	swapchainCreateInfo.imageColorSpace = _surfaceFormat.colorSpace;
-	swapchainCreateInfo.imageExtent = _extent;
-	swapchainCreateInfo.imageArrayLayers = 1;
-	swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	swapchainCreateInfo.preTransform = surfaceCapabilities.currentTransform;
-	swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	swapchainCreateInfo.presentMode = _presentMode;
-	swapchainCreateInfo.clipped = VK_TRUE;
-	swapchainCreateInfo.oldSwapchain = _oldSwapchain;
-
-	VkSwapchainKHR swapchain;
-	VK_CALL(vkCreateSwapchainKHR(_device, &swapchainCreateInfo, nullptr, &swapchain));
-
-	return swapchain;
-}
-
-static VkImageView createImageView(
-	VkDevice _device,
-	VkImage _image,
-	VkFormat _format)
-{
-	VkImageAspectFlags aspectMask = (_format == VK_FORMAT_D32_SFLOAT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-
-	VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-	imageViewCreateInfo.image = _image;
-	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	imageViewCreateInfo.format = _format;
-	imageViewCreateInfo.subresourceRange.aspectMask = aspectMask;
-	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-	imageViewCreateInfo.subresourceRange.levelCount = 1;
-	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-	imageViewCreateInfo.subresourceRange.layerCount = 1;
-
-	VkImageView imageView;
-	VK_CALL(vkCreateImageView(_device, &imageViewCreateInfo, 0, &imageView));
-
-	return imageView;
-}
-
-static Swapchain createSwapchain(
-	GLFWwindow* _pWindow,
-	VkSurfaceKHR _surface,
-	VkPhysicalDevice _physicalDevice,
-	VkDevice _device,
-	VkSwapchainKHR _oldSwapchain = VK_NULL_HANDLE)
-{
-	VkSurfaceFormatKHR surfaceFormat = chooseSwapchainSurfaceFormat(_surface, _physicalDevice);
-	VkPresentModeKHR presentMode = chooseSwapchainPresentMode(_surface, _physicalDevice);
-	VkExtent2D extent = chooseSwapchainExtent(_surface, _physicalDevice, _pWindow);
-
-	Swapchain swapchain{};
-	swapchain.imageFormat = surfaceFormat.format;
-	swapchain.extent = extent;
-
-	swapchain.swapchain = createSwapchain(
-		_surface,
-		_physicalDevice,
-		_device,
-		surfaceFormat,
-		presentMode,
-		extent,
-		_oldSwapchain);
-
-	uint32_t imageCount;
-	vkGetSwapchainImagesKHR(_device, swapchain.swapchain, &imageCount, nullptr);
-	swapchain.images.resize(imageCount);
-	vkGetSwapchainImagesKHR(_device, swapchain.swapchain, &imageCount, swapchain.images.data());
-
-	swapchain.imageViews.resize(swapchain.images.size());
-	for (size_t imageIndex = 0; imageIndex < swapchain.imageViews.size(); ++imageIndex)
-	{
-		swapchain.imageViews[imageIndex] = createImageView(_device, swapchain.images[imageIndex], swapchain.imageFormat);
-	}
-
-	return swapchain;
-}
-
-static void destroySwapchain(
-	VkDevice _device,
-	Swapchain& _rSwapchain)
-{
-	for (VkImageView imageView : _rSwapchain.imageViews)
-	{
-		vkDestroyImageView(_device, imageView, nullptr);
-	}
-
-	vkDestroySwapchainKHR(_device, _rSwapchain.swapchain, nullptr);
-
-	_rSwapchain = {};
 }
 
 static VkRenderPass createRenderPass(
@@ -704,12 +506,12 @@ static Buffer createBuffer(
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	Buffer buffer{};
-	VK_CALL(vkCreateBuffer(_device, &bufferCreateInfo, nullptr, &buffer.buffer));
+	VK_CALL(vkCreateBuffer(_device, &bufferCreateInfo, nullptr, &buffer.bufferVk));
 
 	buffer.size = _size;
 
 	VkMemoryRequirements memoryRequirements;
-	vkGetBufferMemoryRequirements(_device, buffer.buffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(_device, buffer.bufferVk, &memoryRequirements);
 
 	uint32_t memoryTypeIndex = tryFindMemoryType(_physicalDevice, memoryRequirements.memoryTypeBits, _memoryFlags);
 	assert(memoryTypeIndex != -1);
@@ -720,7 +522,7 @@ static Buffer createBuffer(
 
 	VK_CALL(vkAllocateMemory(_device, &allocateInfo, nullptr, &buffer.memory));
 
-	vkBindBufferMemory(_device, buffer.buffer, buffer.memory, 0);
+	vkBindBufferMemory(_device, buffer.bufferVk, buffer.memory, 0);
 
 	if (_memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
 	{
@@ -786,7 +588,7 @@ static void destroyBuffer(
 		vkUnmapMemory(_device, _rBuffer.memory);
 	}
 
-	vkDestroyBuffer(_device, _rBuffer.buffer, nullptr);
+	vkDestroyBuffer(_device, _rBuffer.bufferVk, nullptr);
 	vkFreeMemory(_device, _rBuffer.memory, nullptr);
 
 	_rBuffer = {};
@@ -815,7 +617,7 @@ static Buffer createBuffer(
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, _size);
 
 		memcpy(stagingBuffer.data, _pContents, stagingBuffer.size);
-		copyBuffer(_device, _queue, _commandPool, stagingBuffer.buffer, buffer.buffer, _size);
+		copyBuffer(_device, _queue, _commandPool, stagingBuffer.bufferVk, buffer.bufferVk, _size);
 		destroyBuffer(_device, stagingBuffer);
 	}
 
@@ -905,8 +707,8 @@ Mesh loadMesh(
 	std::string warning, error;
 
 	{
-		bool result = tinyobj::LoadObj(&attrib, &shapes, &materials, &warning, &error, _pFilePath);
-		assert(result);
+		bool bObjLoaded = tinyobj::LoadObj(&attrib, &shapes, &materials, &warning, &error, _pFilePath);
+		assert(bObjLoaded);
 	}
 
 	// TODO-MILKRU: Meshes with multiple sections (shapes) are not supported yet.
@@ -943,84 +745,51 @@ Mesh loadMesh(
 		mesh.vertices.push_back(vertex);
 	}
 
-	if (true)
-	{
-		std::vector<uint32_t> remapTable(indexCount);
-		size_t vertexCount = meshopt_generateVertexRemap(remapTable.data(), nullptr, indexCount,
-			mesh.vertices.data(), mesh.vertices.size(), sizeof(Vertex));
+	std::vector<uint32_t> remapTable(indexCount);
+	size_t vertexCount = meshopt_generateVertexRemap(remapTable.data(), nullptr, indexCount,
+		mesh.vertices.data(), mesh.vertices.size(), sizeof(Vertex));
 
-		mesh.vertices.resize(vertexCount);
-		mesh.indices.resize(indexCount);
+	mesh.vertices.resize(vertexCount);
+	mesh.indices.resize(indexCount);
 
-		meshopt_remapVertexBuffer(mesh.vertices.data(), mesh.vertices.data(), indexCount, sizeof(Vertex), remapTable.data());
-		meshopt_remapIndexBuffer(mesh.indices.data(), nullptr, indexCount, remapTable.data());
+	meshopt_remapVertexBuffer(mesh.vertices.data(), mesh.vertices.data(), indexCount, sizeof(Vertex), remapTable.data());
+	meshopt_remapIndexBuffer(mesh.indices.data(), nullptr, indexCount, remapTable.data());
 
-		if (true) // TODO-MILKRU: Do a performance sanity check for this.
-		{
-			meshopt_optimizeVertexCache(mesh.indices.data(), mesh.indices.data(), indexCount, vertexCount);
-			// TODO-MILKRU: meshopt_optimizeOverdraw does not support 16 bit vertex positions.
-			meshopt_optimizeVertexFetch(mesh.vertices.data(), mesh.indices.data(), indexCount, mesh.vertices.data(), vertexCount, sizeof(Vertex));
-		}
-	}
-	else // TODO-MILKRU: Do a performance sanity check for this.
-	{
-		mesh.indices.resize(indexCount);
-		for (size_t i = 0; i < indexCount; ++i)
-		{
-			mesh.indices[i] = uint32_t(i);
-		}
-	}
+	meshopt_optimizeVertexCache(mesh.indices.data(), mesh.indices.data(), indexCount, vertexCount);
+	// TODO-MILKRU: meshopt_optimizeOverdraw does not support 16 bit vertex positions.
+	meshopt_optimizeVertexFetch(mesh.vertices.data(), mesh.indices.data(), indexCount, mesh.vertices.data(), vertexCount, sizeof(Vertex));
 
 	return mesh;
 }
 
 int main(int argc, const char** argv)
 {
+	EASY_MAIN_THREAD;
+	EASY_PROFILER_ENABLE;
+
 	if (argc != 2)
 	{
 		printf("Mesh path is required as a command line argument.\n");
 		return 1;
 	}
 
-	GLFWwindow* pWindow = nullptr;
-	{
-		if (!glfwInit())
-		{
-			assert(!"GLFW not initialized properly!");
-		}
-
-		if (!glfwVulkanSupported())
-		{
-			assert(!"Vulkan is not supported!");
-		}
-
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-		pWindow = glfwCreateWindow(kWindowWidth, kWindowHeight, "proto_vk", nullptr, nullptr);
-	}
-
-	if (pWindow == nullptr)
-	{
-		glfwTerminate();
-		assert(!"Window creation failed!");
-	}
+	GLFWwindow* pWindow = createWindow();
 
 	VK_CALL(volkInitialize());
 
 	VkInstance instance = createInstance();
 
-	VkDebugUtilsMessengerEXT debugMessenger = kEnableValidationLayers ? createDebugMessenger(instance) : VK_NULL_HANDLE;
+	VkDebugUtilsMessengerEXT debugMessenger = kbEnableValidationLayers ? createDebugMessenger(instance) : VK_NULL_HANDLE;
 
 	VkSurfaceKHR surface = createSurface(instance, pWindow);
 
 	VkPhysicalDevice physicalDevice = tryPickPhysicalDevice(instance, surface);
 	assert(physicalDevice != VK_NULL_HANDLE);
 
-	{
-		VkPhysicalDeviceProperties physicalDeviceProperties;
-		vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
-		printf("%s will be used.\n", physicalDeviceProperties.deviceName);
-	}
+	VkPhysicalDeviceProperties physicalDeviceProperties;
+	vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+
+	printf("%s device will be used.\n", physicalDeviceProperties.deviceName);
 
 	uint32_t graphicsQueueIndex = tryGetGraphicsQueueFamilyIndex(physicalDevice);
 	assert(graphicsQueueIndex != ~0u);
@@ -1063,7 +832,7 @@ int main(int argc, const char** argv)
 
 	Buffer vertexBuffer = createBuffer(physicalDevice, device, graphicsQueue, commandPool,
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, sizeof(Vertex) * mesh.vertices.size(), mesh.vertices.data());
-	
+
 	Buffer indexBuffer = createBuffer(physicalDevice, device, graphicsQueue, commandPool,
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT, sizeof(uint32_t) * mesh.indices.size(), mesh.indices.data());
 
@@ -1076,16 +845,26 @@ int main(int argc, const char** argv)
 		framePacings[frameIndex] = createFramePacing(device);
 	}
 
+	QueryPool timestampsQueryPool = createQueryPool(device, VK_QUERY_TYPE_TIMESTAMP, /*_queryCount*/ 2);
+	QueryPool statisticsQueryPool = createQueryPool(device, VK_QUERY_TYPE_PIPELINE_STATISTICS, /*_queryCount*/ 1);
+
 	uint32_t currentFrame = 0;
 
 	while (!glfwWindowShouldClose(pWindow))
 	{
+		EASY_BLOCK("Frame");
+
+		auto beginFrameTimestamp = std::chrono::high_resolution_clock::now();
+
 		glfwPollEvents();
 
 		VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
 		FramePacing framePacing = framePacings[currentFrame];
 
-		VK_CALL(vkWaitForFences(device, 1, &framePacing.inFlightFence, VK_TRUE, UINT64_MAX));
+		{
+			EASY_BLOCK("WaitForFences");
+			VK_CALL(vkWaitForFences(device, 1, &framePacing.inFlightFence, VK_TRUE, UINT64_MAX));
+		}
 
 		VkSurfaceCapabilitiesKHR surfaceCapabilities;
 		VK_CALL(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities));
@@ -1099,6 +878,8 @@ int main(int argc, const char** argv)
 
 		if (swapchain.extent.width != currentExtent.width || swapchain.extent.height != currentExtent.height)
 		{
+			EASY_BLOCK("RecreateSwapchain");
+
 			VK_CALL(vkDeviceWaitIdle(device));
 
 			for (VkFramebuffer framebuffer : framebuffers)
@@ -1106,7 +887,7 @@ int main(int argc, const char** argv)
 				vkDestroyFramebuffer(device, framebuffer, nullptr);
 			}
 
-			Swapchain newSwapchain = createSwapchain(pWindow, surface, physicalDevice, device, swapchain.swapchain);
+			Swapchain newSwapchain = createSwapchain(pWindow, surface, physicalDevice, device, swapchain.swapchainVk);
 			destroySwapchain(device, swapchain);
 			swapchain = newSwapchain;
 
@@ -1122,13 +903,18 @@ int main(int argc, const char** argv)
 		VK_CALL(vkResetFences(device, 1, &framePacing.inFlightFence));
 
 		uint32_t imageIndex;
-		VK_CALL(vkAcquireNextImageKHR(device, swapchain.swapchain, UINT64_MAX, framePacing.imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex));
+		VK_CALL(vkAcquireNextImageKHR(device, swapchain.swapchainVk, UINT64_MAX, framePacing.imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex));
 
 		{
+			EASY_BLOCK("Draw");
+
 			vkResetCommandBuffer(commandBuffer, 0);
 			VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 
 			VK_CALL(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
+
+			resetQueryPool(commandBuffer, timestampsQueryPool);
+			resetQueryPool(commandBuffer, statisticsQueryPool);
 
 			VkRenderPassBeginInfo renderPassBeginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
 			renderPassBeginInfo.renderPass = renderPass;
@@ -1140,36 +926,44 @@ int main(int argc, const char** argv)
 			renderPassBeginInfo.clearValueCount = 1;
 			renderPassBeginInfo.pClearValues = &clearColor;
 
-			vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+			{
+				GPU_BLOCK(commandBuffer, timestampsQueryPool, Main);
+				GPU_STATS(commandBuffer, statisticsQueryPool, Main);
 
-			// Flipped viewport.
-			// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
-			VkViewport viewport{};
-			viewport.x = 0.0f;
-			viewport.y = float(swapchain.extent.height);
-			viewport.width = float(swapchain.extent.width);
-			viewport.height = -float(swapchain.extent.height);
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;
+				vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-			VkRect2D scissorRect{};
-			scissorRect.offset = { 0, 0 };
-			scissorRect.extent = swapchain.extent;
+				// Flipped viewport.
+				// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
+				VkViewport viewport{};
+				viewport.x = 0.0f;
+				viewport.y = float(swapchain.extent.height);
+				viewport.width = float(swapchain.extent.width);
+				viewport.height = -float(swapchain.extent.height);
+				viewport.minDepth = 0.0f;
+				viewport.maxDepth = 1.0f;
 
-			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-			vkCmdSetScissor(commandBuffer, 0, 1, &scissorRect);
+				VkRect2D scissorRect{};
+				scissorRect.offset = { 0, 0 };
+				scissorRect.extent = swapchain.extent;
 
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+				vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+				vkCmdSetScissor(commandBuffer, 0, 1, &scissorRect);
 
-			VkBuffer vertexBuffers[] = { vertexBuffer.buffer };
-			VkDeviceSize offsets[] = { 0 };
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-			vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+				VkBuffer vertexBuffers[] = { vertexBuffer.bufferVk };
+				VkDeviceSize offsets[] = { 0 };
+				vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-			vkCmdDrawIndexed(commandBuffer, uint32_t(mesh.indices.size()), 1, 0, 0, 0);
+				vkCmdBindIndexBuffer(commandBuffer, indexBuffer.bufferVk, 0, VK_INDEX_TYPE_UINT32);
 
-			vkCmdEndRenderPass(commandBuffer);
+				for (uint32_t drawIndex = 0; drawIndex < 4086; ++drawIndex)
+				{
+					vkCmdDrawIndexed(commandBuffer, uint32_t(mesh.indices.size()), 1, 0, 0, 0);
+				}
+
+				vkCmdEndRenderPass(commandBuffer);
+			}
 
 			VK_CALL(vkEndCommandBuffer(commandBuffer));
 		}
@@ -1193,17 +987,40 @@ int main(int argc, const char** argv)
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = signalSemaphores;
 		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = &swapchain.swapchain;
+		presentInfo.pSwapchains = &swapchain.swapchainVk;
 		presentInfo.pImageIndices = &imageIndex;
 
 		VK_CALL(vkQueuePresentKHR(graphicsQueue, &presentInfo));
 
+		updateQueryPoolResults(device, timestampsQueryPool);
+		updateQueryPoolResults(device, statisticsQueryPool);
+
+		{
+			static double mainGpuTime = 0.0f;
+			GPU_BLOCK_RESULT(timestampsQueryPool, physicalDeviceProperties.limits, Main, mainGpuTime);
+
+			static uint64_t mainGpuPrimitives = 0ull;
+			GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::ClippingPrimitives, mainGpuPrimitives);
+
+			auto endFrameTimestamp = std::chrono::high_resolution_clock::now();
+			double mainCpuTime = std::chrono::duration<double, std::chrono::milliseconds::period>(endFrameTimestamp - beginFrameTimestamp).count();
+
+			// TODO-MILKRU: Temporary until Imgui gets integrated.
+			sprintf(windowTitle, "proto_vk [GPU time: %.2f ms, CPU time: %.2f ms, clipping primitives: %lld]", mainGpuTime, mainCpuTime, mainGpuPrimitives);
+			glfwSetWindowTitle(pWindow, windowTitle);
+		}
+
 		currentFrame = (currentFrame + 1) % kMaxFramesInFlightCount;
 	}
 
-	VK_CALL(vkDeviceWaitIdle(device));
+	{
+		EASY_BLOCK("DeviceWaitIdle");
+		VK_CALL(vkDeviceWaitIdle(device));
+	}
 
 	{
+		EASY_BLOCK("Cleanup");
+
 		for (VkFramebuffer framebuffer : framebuffers)
 		{
 			vkDestroyFramebuffer(device, framebuffer, nullptr);
@@ -1225,6 +1042,9 @@ int main(int argc, const char** argv)
 
 		vkDestroyCommandPool(device, commandPool, nullptr);
 
+		destroyQueryPool(device, timestampsQueryPool);
+		destroyQueryPool(device, statisticsQueryPool);
+
 		vkDestroyDevice(device, nullptr);
 
 		if (debugMessenger != VK_NULL_HANDLE)
@@ -1238,6 +1058,12 @@ int main(int argc, const char** argv)
 		glfwDestroyWindow(pWindow);
 
 		glfwTerminate();
+	}
+
+	{
+		const char* profileCaptureFileName = "cpu_profile_capture.prof";
+		profiler::dumpBlocksToFile(profileCaptureFileName);
+		printf("CPU profile capture saved to %s file.\n", profileCaptureFileName);
 	}
 
 	return 0;

@@ -93,3 +93,16 @@ target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/meshoptimizer/src")
 target_link_libraries(${PROJECT_NAME} PRIVATE meshoptimizer)
 
 set_property(TARGET meshoptimizer PROPERTY FOLDER "3rdparty")
+
+# easy_profiler
+message("Adding easy_profiler:")
+
+set(EASY_PROFILER_NO_GUI ON CACHE BOOL "")
+set(EASY_PROFILER_NO_SAMPLES ON CACHE BOOL "")
+
+add_subdirectory("3rdparty/easy_profiler")
+target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/easy_profiler/include")
+target_link_libraries(${PROJECT_NAME} PRIVATE easy_profiler)
+
+set_property(TARGET easy_profiler PROPERTY FOLDER "3rdparty/easy_profiler")
+set_property(TARGET profiler_converter PROPERTY FOLDER "3rdparty/easy_profiler")
