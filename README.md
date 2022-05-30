@@ -3,6 +3,8 @@ Rendering engine prototype made with `Vulkan`. Code is written using [a simpler 
 
 ## Features
 * Single mesh rendering
+* In-flight frames
+* CPU and GPU profiling
 
 ## Installation
 This project uses [CMake](https://cmake.org/download/) as a build tool. Since the project is built using `Vulkan`, the latest [Vulkan SDK](https://vulkan.lunarg.com) should be installed.
