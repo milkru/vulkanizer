@@ -22,7 +22,7 @@ const uint32_t kWindowHeight = 720;
 
 const uint32_t kMaxFramesInFlightCount = 2;
 
-char windowTitle[256] = "proto_vk";
+char windowTitle[256] = "vulkanizer";
 
 struct FramePacing
 {
@@ -131,9 +131,9 @@ static VkInstance createInstance()
 	};
 
 	VkApplicationInfo applicationInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
-	applicationInfo.pApplicationName = "proto_vk";
+	applicationInfo.pApplicationName = "vulkanizer";
 	applicationInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-	applicationInfo.pEngineName = "proto_vk";
+	applicationInfo.pEngineName = "vulkanizer";
 	applicationInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	applicationInfo.apiVersion = VK_API_VERSION_1_2;
 
@@ -1006,7 +1006,7 @@ int main(int argc, const char** argv)
 			double mainCpuTime = std::chrono::duration<double, std::chrono::milliseconds::period>(endFrameTimestamp - beginFrameTimestamp).count();
 
 			// TODO-MILKRU: Temporary until Imgui gets integrated.
-			sprintf(windowTitle, "proto_vk [GPU time: %.2f ms, CPU time: %.2f ms, clipping primitives: %lld]", mainGpuTime, mainCpuTime, mainGpuPrimitives);
+			sprintf(windowTitle, "vulkanizer [GPU time: %.2f ms, CPU time: %.2f ms, clipping primitives: %lld]", mainGpuTime, mainCpuTime, mainGpuPrimitives);
 			glfwSetWindowTitle(pWindow, windowTitle);
 		}
 

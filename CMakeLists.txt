@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project
-project(proto_vk)
+project(vulkanizer)
 
 message("Building Project:")
 
