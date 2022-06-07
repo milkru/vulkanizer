@@ -1,6 +1,6 @@
 #pragma once
 
-enum class QueryPoolStatus
+enum class QueryPoolStatus : uint8_t
 {
 	Reset,
 	Issued,
@@ -92,7 +92,7 @@ DECL_SCOPED_GPU_WRAPPER(Stats)
 #define GPU_STATS(_commandBuffer, _rQueryPool, _name) \
 	SCOPED_GPU_NAME(Stats) _name##Stats(_commandBuffer, _rQueryPool, GPU_STATS_NAME(_name))
 
-enum class StatType
+enum class StatType : uint8_t
 {
 	InputAssemblyVertices,
 	InputAssemblyPrimitives,

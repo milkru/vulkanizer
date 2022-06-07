@@ -5,7 +5,6 @@
 #include <glm/glm.hpp>
 
 #include <vector>
-#include <array>
 
 #ifndef VK_CALL
 #define VK_CALL(_call) \

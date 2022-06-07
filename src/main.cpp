@@ -42,9 +42,7 @@ struct Buffer
 struct Vertex
 {
 	uint16_t position[3];
-	// TODO-MILKRU: Consider passing only two components of a normal vector and
-	// reconstruct the third one using the cross product in order to further save memory.
-	uint8_t normal[3];
+	uint8_t normal[2];
 	uint16_t texCoord[2];
 };
 
@@ -76,38 +74,6 @@ static GLFWwindow* createWindow()
 	}
 
 	return pWindow;
-}
-
-static VkVertexInputBindingDescription getVertexBindingDescription()
-{
-	VkVertexInputBindingDescription vertexBindingDescription{};
-	vertexBindingDescription.binding = 0;
-	vertexBindingDescription.stride = sizeof(Vertex);
-	vertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	return vertexBindingDescription;
-}
-
-static std::array<VkVertexInputAttributeDescription, 3> getVertexAttributeDescriptions()
-{
-	std::array<VkVertexInputAttributeDescription, 3> vertexAttributeDescriptions{};
-
-	vertexAttributeDescriptions[0].binding = 0;
-	vertexAttributeDescriptions[0].location = 0;
-	vertexAttributeDescriptions[0].format = VK_FORMAT_R16G16B16_SFLOAT;
-	vertexAttributeDescriptions[0].offset = offsetof(Vertex, position);
-
-	vertexAttributeDescriptions[1].binding = 0;
-	vertexAttributeDescriptions[1].location = 1;
-	vertexAttributeDescriptions[1].format = VK_FORMAT_R8G8B8_SNORM;
-	vertexAttributeDescriptions[1].offset = offsetof(Vertex, normal);
-
-	vertexAttributeDescriptions[2].binding = 0;
-	vertexAttributeDescriptions[2].location = 2;
-	vertexAttributeDescriptions[2].format = VK_FORMAT_R16G16_SFLOAT;
-	vertexAttributeDescriptions[2].offset = offsetof(Vertex, texCoord);
-
-	return vertexAttributeDescriptions;
 }
 
 static VkInstance createInstance()
@@ -262,7 +228,8 @@ static VkDevice createDevice(
 {
 	const char* deviceExtensions[] =
 	{
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME
 	};
 
 	float queuePriority = 1.0f;
@@ -271,20 +238,29 @@ static VkDevice createDevice(
 	queueCreateInfo.queueCount = 1;
 	queueCreateInfo.pQueuePriorities = &queuePriority;
 
-	VkPhysicalDeviceFeatures deviceFeatures{};
-	deviceFeatures.samplerAnisotropy = VK_TRUE;
-	deviceFeatures.pipelineStatisticsQuery = VK_TRUE;
+	VkPhysicalDeviceFeatures2 deviceFeatures2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+	deviceFeatures2.features.pipelineStatisticsQuery = true;
+	deviceFeatures2.features.shaderInt16 = true;
 
-	// TODO-MILKRU: Remember that SPV_KHR_8bit_storage is in VK_VERSION_1_2 core.
-	VkPhysicalDeviceVulkan12Features physicalDeviceFeatures12 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+	VkPhysicalDeviceVulkan11Features deviceFeatures11 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+	deviceFeatures11.storageBuffer16BitAccess = true;
+
+	VkPhysicalDeviceVulkan12Features deviceFeatures12 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+	deviceFeatures12.storageBuffer8BitAccess = true;
+	deviceFeatures12.uniformAndStorageBuffer8BitAccess = true;
+	deviceFeatures12.storagePushConstant8 = true;
+	deviceFeatures12.shaderFloat16 = true;
+	deviceFeatures12.shaderInt8 = true;
 
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-	deviceCreateInfo.pNext = &physicalDeviceFeatures12;
 	deviceCreateInfo.queueCreateInfoCount = 1;
 	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 	deviceCreateInfo.enabledExtensionCount = ARRAY_SIZE(deviceExtensions);
 	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
+
+	deviceCreateInfo.pNext = &deviceFeatures2;
+	deviceFeatures2.pNext = &deviceFeatures11;
+	deviceFeatures11.pNext = &deviceFeatures12;
 
 	VkDevice device;
 	VK_CALL(vkCreateDevice(_physicalDevice, &deviceCreateInfo, nullptr, &device));
@@ -337,12 +313,36 @@ static VkRenderPass createRenderPass(
 	return renderPass;
 }
 
-static VkPipelineLayout createPipelineLayout(
+static VkDescriptorSetLayout createDescriptorSetLayout(
 	VkDevice _device)
 {
+	// TODO-MILKRU: Get these bindings directly from shader using the spirv_reflect.
+	VkDescriptorSetLayoutBinding bindings[1] = {};
+	{
+		bindings[0].binding = 0;
+		bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		bindings[0].descriptorCount = 1;
+		bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	}
+
+	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+	descriptorSetLayoutCreateInfo.bindingCount = ARRAY_SIZE(bindings);
+	descriptorSetLayoutCreateInfo.pBindings = bindings;
+
+	VkDescriptorSetLayout descriptorSetLayout;
+	VK_CALL(vkCreateDescriptorSetLayout(_device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayout));
+
+	return descriptorSetLayout;
+}
+
+static VkPipelineLayout createPipelineLayout(
+	VkDevice _device,
+	VkDescriptorSetLayout _descriptorSetLayout)
+{
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-	pipelineLayoutCreateInfo.setLayoutCount = 0;
-	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &_descriptorSetLayout;
 
 	VkPipelineLayout pipelineLayout;
 	VK_CALL(vkCreatePipelineLayout(_device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout));
@@ -369,14 +369,7 @@ static VkPipeline createGraphicsPipeline(
 
 	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = { vertexShaderStageICreatenfo, fragmentShaderStageCreateInfo };
 
-	VkVertexInputBindingDescription bindingDescription = getVertexBindingDescription();
-	std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions = getVertexAttributeDescriptions();
-
 	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
-	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
-	vertexInputCreateInfo.vertexAttributeDescriptionCount = uint32_t(attributeDescriptions.size());
-	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;
-	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
 	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -730,12 +723,12 @@ Mesh loadMesh(
 		vertex.position[1] = meshopt_quantizeHalf(attrib.vertices[3 * index.vertex_index + 1]);
 		vertex.position[2] = meshopt_quantizeHalf(attrib.vertices[3 * index.vertex_index + 2]);
 
-		vertex.normal[0] = meshopt_quantizeSnorm(index.normal_index < 0 ? 0.0f :
-			attrib.normals[3 * index.normal_index + 0], 8);
-		vertex.normal[1] = meshopt_quantizeSnorm(index.normal_index < 0 ? 1.0f :
-			attrib.normals[3 * index.normal_index + 1], 8);
-		vertex.normal[2] = meshopt_quantizeSnorm(index.normal_index < 0 ? 0.0f :
-			attrib.normals[3 * index.normal_index + 2], 8);
+		vertex.normal[0] = uint8_t(meshopt_quantizeUnorm(index.normal_index < 0 ? 0.0f :
+			0.5f + 0.5f * attrib.normals[3 * index.normal_index + 0], 8));
+		vertex.normal[1] = uint8_t(meshopt_quantizeUnorm(index.normal_index < 0 ? 0.0f :
+			0.5f + 0.5f * attrib.normals[3 * index.normal_index + 1], 8));
+		vertex.normal[2] = uint8_t(meshopt_quantizeUnorm(index.normal_index < 0 ? 0.0f :
+			0.5f + 0.5f * attrib.normals[3 * index.normal_index + 2], 8));
 
 		vertex.texCoord[0] = meshopt_quantizeHalf(index.texcoord_index < 0 ? 0.0f :
 			attrib.texcoords[2 * index.texcoord_index + 0]);
@@ -803,7 +796,9 @@ int main(int argc, const char** argv)
 
 	VkRenderPass renderPass = createRenderPass(device, swapchain.imageFormat);
 
-	VkPipelineLayout pipelineLayout = createPipelineLayout(device);
+	VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(device);
+
+	VkPipelineLayout pipelineLayout = createPipelineLayout(device, descriptorSetLayout);
 
 	VkPipeline graphicsPipeline;
 	{
@@ -827,11 +822,15 @@ int main(int argc, const char** argv)
 
 	VkCommandPool commandPool = createCommandPool(device, graphicsQueueIndex);
 
-	const char* meshPath = argv[1];
-	Mesh mesh = loadMesh(meshPath);
+	Mesh mesh;
+	{
+		EASY_BLOCK("LoadMesh");
+		const char* meshPath = argv[1];
+		mesh = loadMesh(meshPath);
+	}
 
 	Buffer vertexBuffer = createBuffer(physicalDevice, device, graphicsQueue, commandPool,
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, sizeof(Vertex) * mesh.vertices.size(), mesh.vertices.data());
+		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, sizeof(Vertex) * mesh.vertices.size(), mesh.vertices.data());
 
 	Buffer indexBuffer = createBuffer(physicalDevice, device, graphicsQueue, commandPool,
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT, sizeof(uint32_t) * mesh.indices.size(), mesh.indices.data());
@@ -951,13 +950,23 @@ int main(int argc, const char** argv)
 
 				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-				VkBuffer vertexBuffers[] = { vertexBuffer.bufferVk };
-				VkDeviceSize offsets[] = { 0 };
-				vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+				VkDescriptorBufferInfo vertexBufferDescriptorInfo{};
+				vertexBufferDescriptorInfo.buffer = vertexBuffer.bufferVk;
+				vertexBufferDescriptorInfo.offset = 0;
+				vertexBufferDescriptorInfo.range = vertexBuffer.size;
+
+				VkWriteDescriptorSet descriptors[1]{};
+				descriptors[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				descriptors[0].dstBinding = 0;
+				descriptors[0].descriptorCount = 1;
+				descriptors[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+				descriptors[0].pBufferInfo = &vertexBufferDescriptorInfo;
+
+				vkCmdPushDescriptorSetKHR(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, ARRAY_SIZE(descriptors), descriptors);
 
 				vkCmdBindIndexBuffer(commandBuffer, indexBuffer.bufferVk, 0, VK_INDEX_TYPE_UINT32);
 
-				for (uint32_t drawIndex = 0; drawIndex < 4086; ++drawIndex)
+				for (uint32_t drawIndex = 0; drawIndex < 4096; ++drawIndex)
 				{
 					vkCmdDrawIndexed(commandBuffer, uint32_t(mesh.indices.size()), 1, 0, 0, 0);
 				}
@@ -1027,6 +1036,7 @@ int main(int argc, const char** argv)
 		}
 
 		vkDestroyPipeline(device, graphicsPipeline, nullptr);
+		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 		vkDestroyRenderPass(device, renderPass, nullptr);
 
