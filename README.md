@@ -13,7 +13,7 @@ Rendering engine prototype made with `Vulkan 1.2`. Code is written using a [simp
 * CPU profiling using [easy_profiler](https://github.com/yse/easy_profiler)
 * GPU profiling using query timestamps and pipeline statistics
 * Programmable vertex fetching with 12 byte vertices
-* Custom ImGui Vulkan backend with performance window
+* Custom [imgui](https://github.com/ocornut/imgui) Vulkan backend with performance window
 
 ## Installation
 This project uses [CMake](https://cmake.org/download/) as a build tool. Since the project is built using `Vulkan`, the latest [Vulkan SDK](https://vulkan.lunarg.com) is required.
