@@ -1,7 +1,7 @@
 ## About
 Rendering engine prototype made with `Vulkan 1.2`. Code is written using a [simpler C++ coding style](https://gist.github.com/bkaradzic/2e39896bc7d8c34e042b). Project requires `C++11` standard and a `x64` system. Currently the code is tested only on `Windows`, using `MSVC` (Visual Studio) and `MINGW` (Visual Studio Code) compilers. `Linux` is not completely supported at the moment, but it should be easy to port, since all third party libraries are cross platform.
 
-![Demo](https://github.com/milkru/data_resources/blob/main/vulkanizer/imgui_buddha.png)
+![Demo](https://github.com/milkru/data_resources/blob/main/vulkanizer/imgui_buddha.PNG)
 
 ## Features
 * Vulkan meta loading using [volk](https://github.com/zeux/volk)
