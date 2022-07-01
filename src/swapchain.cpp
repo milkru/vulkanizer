@@ -72,7 +72,7 @@ static VkExtent2D chooseSwapchainExtent(
 		return surfaceCapabilities.currentExtent;
 	}
 
-	int windowWidth, windowHeight;
+	int32_t windowWidth, windowHeight;
 	glfwGetFramebufferSize(_pWindow, &windowWidth, &windowHeight);
 
 	VkExtent2D actualExtent = { uint32_t(windowWidth), uint32_t(windowHeight) };

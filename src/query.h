@@ -65,20 +65,24 @@ uint64_t getQueryResult(
 	uint32_t _query,
 	uint32_t _statisticsOffset = 0);
 
+#define GPU_PROFILE 1
+
+#if GPU_PROFILE
+
 #define SCOPED_GPU_NAME(_name) ScopedGpu##_name
 
 #define DECL_SCOPED_GPU_WRAPPER(_name) \
-	struct SCOPED_GPU_NAME(_name) \
-	{ \
-		SCOPED_GPU_NAME(_name)( \
-			VkCommandBuffer _commandBuffer, \
-			QueryPool& _rQueryPool, \
-			const char* _name); \
-		~SCOPED_GPU_NAME(_name)(); \
-		VkCommandBuffer commandBuffer; \
-		QueryPool& rQueryPool; \
-		Queries queries; \
-	};
+		struct SCOPED_GPU_NAME(_name) \
+		{ \
+			SCOPED_GPU_NAME(_name)( \
+				VkCommandBuffer _commandBuffer, \
+				QueryPool& _rQueryPool, \
+				const char* _name); \
+			~SCOPED_GPU_NAME(_name)(); \
+			VkCommandBuffer commandBuffer; \
+			QueryPool& rQueryPool; \
+			Queries queries; \
+		};
 
 DECL_SCOPED_GPU_WRAPPER(Block)
 DECL_SCOPED_GPU_WRAPPER(Stats)
@@ -87,10 +91,10 @@ DECL_SCOPED_GPU_WRAPPER(Stats)
 #define GPU_STATS_NAME(_name) TO_STRING(_name##Stats)
 
 #define GPU_BLOCK(_commandBuffer, _rQueryPool, _name) \
-	SCOPED_GPU_NAME(Block) _name##Block(_commandBuffer, _rQueryPool, GPU_BLOCK_NAME(_name))
+		SCOPED_GPU_NAME(Block) _name##Block(_commandBuffer, _rQueryPool, GPU_BLOCK_NAME(_name))
 
 #define GPU_STATS(_commandBuffer, _rQueryPool, _name) \
-	SCOPED_GPU_NAME(Stats) _name##Stats(_commandBuffer, _rQueryPool, GPU_STATS_NAME(_name))
+		SCOPED_GPU_NAME(Stats) _name##Stats(_commandBuffer, _rQueryPool, GPU_STATS_NAME(_name))
 
 enum class StatType : uint8_t
 {
@@ -122,3 +126,12 @@ bool tryGetStatsResult(
 
 #define GPU_STATS_RESULT(_rQueryPool, _name, _type, _rResult) \
 	tryGetStatsResult(_rQueryPool, GPU_STATS_NAME(_name), _type, _rResult)
+
+#else
+
+#define GPU_BLOCK(_commandBuffer, _rQueryPool, _name)
+#define GPU_STATS(_commandBuffer, _rQueryPool, _name)
+#define GPU_BLOCK_RESULT(_rQueryPool, _limits, _name, _rResult)
+#define GPU_STATS_RESULT(_rQueryPool, _name, _type, _rResult)
+
+#endif // GPU_PROFILE

@@ -53,9 +53,10 @@ set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "")
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "")
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "")
 set(GLFW_INSTALL OFF CACHE BOOL "")
+set(GLFW_DIR 3rdparty/glfw)
 
-add_subdirectory("3rdparty/glfw")
-target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/glfw/include")
+add_subdirectory(${GLFW_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${GLFW_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
 
 set_property(TARGET glfw PROPERTY FOLDER "3rdparty/glfw")
@@ -64,13 +65,15 @@ set_property(TARGET update_mappings PROPERTY FOLDER "3rdparty/glfw")
 # glm
 message("Adding glm:")
 
-target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/glm")
+set(GLM_DIR 3rdparty/glm)
+target_include_directories(${PROJECT_NAME} PRIVATE ${GLM_DIR})
 
 # volk
 message("Adding volk:")
 
-add_subdirectory("3rdparty/volk")
-target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/volk")
+set(VOLK_DIR 3rdparty/volk)
+add_subdirectory(${VOLK_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${VOLK_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE volk)
 
 set_property(TARGET volk PROPERTY FOLDER "3rdparty")
@@ -78,8 +81,9 @@ set_property(TARGET volk PROPERTY FOLDER "3rdparty")
 # tinyobjloader
 message("Adding tinyobjloader:")
 
-add_subdirectory("3rdparty/tinyobjloader")
-target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/tinyobjloader")
+set(TINYOBJLOADER_DIR 3rdparty/tinyobjloader)
+add_subdirectory(${TINYOBJLOADER_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${TINYOBJLOADER_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE tinyobjloader)
 
 set_property(TARGET tinyobjloader PROPERTY FOLDER "3rdparty/tinyobjloader")
@@ -88,8 +92,9 @@ set_property(TARGET uninstall PROPERTY FOLDER "3rdparty/tinyobjloader")
 # meshoptimizer
 message("Adding meshoptimizer:")
 
-add_subdirectory("3rdparty/meshoptimizer")
-target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/meshoptimizer/src")
+set(MESHOPTIMIZER_DIR 3rdparty/meshoptimizer)
+add_subdirectory(${MESHOPTIMIZER_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${MESHOPTIMIZER_DIR}/src)
 target_link_libraries(${PROJECT_NAME} PRIVATE meshoptimizer)
 
 set_property(TARGET meshoptimizer PROPERTY FOLDER "3rdparty")
@@ -99,10 +104,31 @@ message("Adding easy_profiler:")
 
 set(EASY_PROFILER_NO_GUI ON CACHE BOOL "")
 set(EASY_PROFILER_NO_SAMPLES ON CACHE BOOL "")
+set(EASY_PROFILER_DIR 3rdparty/easy_profiler)
 
-add_subdirectory("3rdparty/easy_profiler")
-target_include_directories(${PROJECT_NAME} PRIVATE "3rdparty/easy_profiler/include")
+add_subdirectory(${EASY_PROFILER_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${EASY_PROFILER_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE easy_profiler)
 
 set_property(TARGET easy_profiler PROPERTY FOLDER "3rdparty/easy_profiler")
 set_property(TARGET profiler_converter PROPERTY FOLDER "3rdparty/easy_profiler")
+
+# imgui
+message("Adding imgui:")
+
+set(IMGUI_DIR 3rdparty/imgui)
+set(IMGUI_SOURCES
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_demo.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp)
+
+add_library(imgui STATIC ${IMGUI_SOURCES})
+target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR})
+target_include_directories(imgui PRIVATE ${IMGUI_DIR})
+target_include_directories(imgui PRIVATE ${GLFW_DIR}/include)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
+
+set_property(TARGET imgui PROPERTY FOLDER "3rdparty")

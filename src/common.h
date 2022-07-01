@@ -28,7 +28,7 @@
 #endif
 
 #ifndef ARRAY_SIZE
-#define ARRAY_SIZE(_arr) ((int)(sizeof(_arr) / sizeof(_arr[0])))
+#define ARRAY_SIZE(_arr) ((int32_t)(sizeof(_arr) / sizeof(_arr[0])))
 #endif
 
 #ifndef TO_STRING

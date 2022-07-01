@@ -14,7 +14,7 @@ struct Vertex
 
 layout(binding = 0) readonly buffer Vertices { Vertex vertices[]; };
 
-layout(location = 0) out vec3 fragColor;
+layout(location = 0) out vec3 outColor;
 
 void main()
 {
@@ -38,5 +38,5 @@ void main()
 		vertices[gl_VertexIndex].texCoord[1]);
 
     gl_Position = vec4(position.xy, 0.0, 1.0);
-    fragColor = 0.5 + 0.5 * normal;
+    outColor = 0.5 + 0.5 * normal;
 }

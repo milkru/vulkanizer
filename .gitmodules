@@ -22,3 +22,6 @@
 	path = 3rdparty/easy_profiler
 	url = https://github.com/yse/easy_profiler
 	branch = develop
+[submodule "3rdparty/imgui"]
+	path = 3rdparty/imgui
+	url = https://github.com/ocornut/imgui

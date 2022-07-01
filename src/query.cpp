@@ -138,6 +138,11 @@ void updateQueryPoolResults(
 	VkDevice _device,
 	QueryPool& _rQueryPool)
 {
+	if (_rQueryPool.allocatedQueries == 0)
+	{
+		return;
+	}
+
 	uint32_t resultElementCount = getQueryResultElementCount(_rQueryPool.type);
 
 	VkResult result = vkGetQueryPoolResults(_device, _rQueryPool.queryPoolVk, 0, _rQueryPool.allocatedQueries,
@@ -176,6 +181,7 @@ static Queries getOrCreateDeclarationQueries(
 	return queries;
 }
 
+#if GPU_PROFILE
 ScopedGpuBlock::ScopedGpuBlock(
 	VkCommandBuffer _commandBuffer,
 	QueryPool& _rQueryPool,
@@ -257,3 +263,4 @@ bool tryGetStatsResult(
 
 	return true;
 }
+#endif // GPU_PROFILE
