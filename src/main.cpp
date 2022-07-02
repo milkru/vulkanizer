@@ -282,7 +282,7 @@ int32_t main(int32_t argc, const char** argv)
 	if (argc != 2)
 	{
 		printf("Mesh path is required as a command line argument.\n");
-		//return 1;
+		return 1;
 	}
 
 	GLFWwindow* pWindow = createWindow();
@@ -339,7 +339,7 @@ int32_t main(int32_t argc, const char** argv)
 	Mesh mesh;
 	{
 		EASY_BLOCK("LoadMesh");
-		const char* meshPath = "C:/Dev/resources/kitten.obj";
+		const char* meshPath = argv[1];
 		mesh = loadMesh(meshPath);
 	}
 
