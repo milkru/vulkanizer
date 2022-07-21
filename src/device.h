@@ -1,61 +1,50 @@
 #pragma once
 
-const uint32_t kMaxFramesInFlightCount = 2;
+struct Queue
+{
+	VkQueue queueVk = VK_NULL_HANDLE;
+	uint32_t index = ~0u;
+};
 
-VkInstance createInstance();
+struct Device
+{
+	VkInstance instance = VK_NULL_HANDLE;
+	VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
+	VkSurfaceKHR surface = VK_NULL_HANDLE;
+	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+	VkDevice deviceVk = VK_NULL_HANDLE;
+	Queue graphicsQueue{};
+	VkCommandPool commandPool = VK_NULL_HANDLE;
+	bool bMeshShadingPipelineSupported = false;
+};
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(
-	VkDebugUtilsMessageSeverityFlagBitsEXT _messageSeverity,
-	VkDebugUtilsMessageTypeFlagsEXT _messageType,
-	const VkDebugUtilsMessengerCallbackDataEXT* _pCallbackData,
-	void* _pUserData);
-
-VkDebugUtilsMessengerEXT createDebugMessenger(
-	VkInstance _instance);
-
-VkSurfaceKHR createSurface(
-	VkInstance _instance,
+Device createDevice(
 	GLFWwindow* _pWindow);
 
-uint32_t tryGetGraphicsQueueFamilyIndex(
-	VkPhysicalDevice _physicalDevice);
-
-VkPhysicalDevice tryPickPhysicalDevice(
-	VkInstance _instance,
-	VkSurfaceKHR _surface);
-
-VkDevice createDevice(
-	VkPhysicalDevice _physicalDevice,
-	uint32_t _queueFamilyIndex);
+void destroyDevice(
+	Device& _rDevice);
 
 uint32_t tryFindMemoryType(
-	VkPhysicalDevice _physicalDevice,
+	Device _device,
 	uint32_t _typeFilter,
 	VkMemoryPropertyFlags _memoryFlags);
 
-VkCommandPool createCommandPool(
-	VkDevice _device,
-	uint32_t _queueFamilyIndex);
-
 VkCommandBuffer createCommandBuffer(
-	VkDevice _device,
-	VkCommandPool _commandPool);
+	Device _device);
 
-template<typename T>
+template<typename Lambda>
 void immediateSubmit(
-	VkDevice _device,
-	VkQueue _queue,
-	VkCommandPool _commandPool,
-	T&& _lambda)
+	Device _device,
+	Lambda&& _callback)
 {
-	VkCommandBuffer commandBuffer = createCommandBuffer(_device, _commandPool);
+	VkCommandBuffer commandBuffer = createCommandBuffer(_device);
 
 	VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
 	VK_CALL(vkBeginCommandBuffer(commandBuffer, &beginInfo));
 
-	_lambda(commandBuffer);
+	_callback(commandBuffer);
 
 	VK_CALL(vkEndCommandBuffer(commandBuffer));
 
@@ -63,8 +52,8 @@ void immediateSubmit(
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffer;
 
-	VK_CALL(vkQueueSubmit(_queue, 1, &submitInfo, VK_NULL_HANDLE));
-	VK_CALL(vkQueueWaitIdle(_queue));
+	VK_CALL(vkQueueSubmit(_device.graphicsQueue.queueVk, 1, &submitInfo, VK_NULL_HANDLE));
+	VK_CALL(vkQueueWaitIdle(_device.graphicsQueue.queueVk));
 
-	vkFreeCommandBuffers(_device, _commandPool, 1, &commandBuffer);
+	vkFreeCommandBuffers(_device.deviceVk, _device.commandPool, 1, &commandBuffer);
 }

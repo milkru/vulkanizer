@@ -19,3 +19,16 @@ std::vector<uint8_t> readFile(
 
 	return fileContents;
 }
+
+glm::mat4 getInfinitePerspectiveMatrix(
+	float _fov,
+	float _aspect,
+	float _near)
+{
+	float f = 1.0f / tanf(_fov / 2.0f);
+	return glm::mat4(
+		f / _aspect, 0.0f, 0.0f, 0.0f,
+		0.0f, f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, -1.0f,
+		0.0f, 0.0f, _near, 0.0f);
+}

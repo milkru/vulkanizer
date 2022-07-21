@@ -1,0 +1,113 @@
+#version 450
+
+#extension GL_EXT_control_flow_attributes: require
+#extension GL_EXT_shader_8bit_storage: require
+#extension GL_EXT_shader_16bit_storage: require
+#extension GL_NV_mesh_shader: require
+
+#include "constants.h"
+#include "geometry.h"
+
+layout(local_size_x = kShaderGroupSizeNV) in;
+layout(triangles, max_vertices = kMaxVerticesPerMeshlet, max_primitives = kMaxTrianglesPerMeshlet) out;
+
+layout(binding = 0) readonly buffer Vertices { Vertex vertices[]; };
+layout(binding = 1) readonly buffer Meshlets { Meshlet meshlets[]; };
+layout(binding = 2) readonly buffer MeshletVertices { uint meshletVertices[]; };
+layout(binding = 3) readonly buffer MeshletTriangles { uint meshletTriangles[]; };
+
+taskNV in Task
+{
+	uint meshletOffset;
+} inTask;
+
+layout(location = 0) out vec3 outColor[];
+
+layout (push_constant) uniform CameraMatrices
+{
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+} cameraMatrices;
+
+vec3 getRandomColor(
+	uint _seed)
+{
+	uint hash = (_seed ^ 61) ^ (_seed >> 16);
+	hash = hash + (hash << 3);
+	hash = hash ^ (hash >> 4);
+	hash = hash * 0x27d4eb2d;
+	hash = hash ^ (hash >> 15);
+	return vec3(float(hash & 255),
+				float((hash >> 8) & 255),
+				float((hash >> 16) & 255)) / 255.0;
+}
+
+void main()
+{
+	uint meshletIndex = inTask.meshletOffset + gl_WorkGroupID.x;
+	Meshlet meshlet = meshlets[meshletIndex];
+
+	uint threadIndex = gl_LocalInvocationID.x;
+	
+	// This allows loop unrolling.
+	const uint vertexLoops = (kMaxVerticesPerMeshlet + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
+
+	vec3 color = getRandomColor(meshletIndex);
+
+	[[unroll]]
+	for (uint loopIndex = 0; loopIndex < vertexLoops; ++loopIndex)
+	{
+		uint localVertexIndex = threadIndex + loopIndex * kShaderGroupSizeNV;
+		localVertexIndex = min(localVertexIndex, meshlet.vertexCount - 1);
+
+		uint vertexIndex = meshletVertices[meshlet.vertexOffset + localVertexIndex];
+		
+		vec3 position = vec3(
+			vertices[vertexIndex].position[0],
+			vertices[vertexIndex].position[1],
+			vertices[vertexIndex].position[2]);
+
+		vec2 normalXY = vec2(
+			int(vertices[vertexIndex].normal[0]),
+			int(vertices[vertexIndex].normal[1])) / 127.0 - 1.0;
+
+		// Reconstruct normal vector Z component.
+		// https://aras-p.info/texts/CompactNormalStorage.html
+		float normalZ = sqrt(1.0 - dot(normalXY, normalXY));
+	
+		vec3 normal = vec3(normalXY, normalZ);
+
+		vec2 texCoord = vec2(
+			vertices[vertexIndex].texCoord[0],
+			vertices[vertexIndex].texCoord[1]);
+
+		gl_MeshVerticesNV[localVertexIndex].gl_Position =
+			cameraMatrices.proj *
+			cameraMatrices.view *
+			cameraMatrices.model *
+			vec4(position, 1.0);
+
+		outColor[localVertexIndex] = color;
+	}
+
+	uint packedTriangleOffset = meshlet.triangleOffset / 4;
+	uint packedTrianglesMax = (3 * meshlet.triangleCount - 1) / 4;
+	
+	// This allows compiler loop unrolling.
+	const uint triangleLoops = (3 * kMaxTrianglesPerMeshlet + 4 * kShaderGroupSizeNV - 1) / (kShaderGroupSizeNV * 4);
+	
+	[[unroll]]
+	for (uint loopIndex = 0; loopIndex < triangleLoops; ++loopIndex)
+	{
+		uint localTriangleIndex = threadIndex + loopIndex * kShaderGroupSizeNV;
+		localTriangleIndex = min(localTriangleIndex, packedTrianglesMax);
+
+		writePackedPrimitiveIndices4x8NV(4 * localTriangleIndex, meshletTriangles[packedTriangleOffset + localTriangleIndex]);
+	}
+
+	if (threadIndex == 0)
+	{
+		gl_PrimitiveCountNV = meshlet.triangleCount;
+	}
+}

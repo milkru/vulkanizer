@@ -2,6 +2,7 @@
 #include "device.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #ifdef DEBUG_
 const bool kbEnableValidationLayers = true;
@@ -9,7 +10,7 @@ const bool kbEnableValidationLayers = true;
 const bool kbEnableValidationLayers = false;
 #endif
 
-VkInstance createInstance()
+static VkInstance createInstance()
 {
 	const char* validationLayers[] =
 	{
@@ -56,7 +57,7 @@ VkInstance createInstance()
 	return instance;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT _messageSeverity,
 	VkDebugUtilsMessageTypeFlagsEXT _messageType,
 	const VkDebugUtilsMessengerCallbackDataEXT* _pCallbackData,
@@ -68,7 +69,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(
 	return VK_FALSE;
 }
 
-VkDebugUtilsMessengerEXT createDebugMessenger(
+static VkDebugUtilsMessengerEXT createDebugMessenger(
 	VkInstance _instance)
 {
 	if (!kbEnableValidationLayers)
@@ -92,7 +93,7 @@ VkDebugUtilsMessengerEXT createDebugMessenger(
 	return debugMessenger;
 }
 
-VkSurfaceKHR createSurface(
+static VkSurfaceKHR createSurface(
 	VkInstance _instance,
 	GLFWwindow* _pWindow)
 {
@@ -102,7 +103,7 @@ VkSurfaceKHR createSurface(
 	return surface;
 }
 
-uint32_t tryGetGraphicsQueueFamilyIndex(
+static uint32_t tryGetGraphicsQueueFamilyIndex(
 	VkPhysicalDevice _physicalDevice)
 {
 	uint32_t queueCount = 0;
@@ -122,7 +123,7 @@ uint32_t tryGetGraphicsQueueFamilyIndex(
 	return ~0u;
 }
 
-VkPhysicalDevice tryPickPhysicalDevice(
+static VkPhysicalDevice tryPickPhysicalDevice(
 	VkInstance _instance,
 	VkSurfaceKHR _surface)
 {
@@ -160,15 +161,41 @@ VkPhysicalDevice tryPickPhysicalDevice(
 	return physicalDevice;
 }
 
-VkDevice createDevice(
-	VkPhysicalDevice _physicalDevice,
-	uint32_t _queueFamilyIndex)
+static bool isMeshShadingPipelineSupported(
+	VkPhysicalDevice _physicalDevice)
 {
-	const char* deviceExtensions[] =
+	uint32_t extensionCount;
+
+	vkEnumerateDeviceExtensionProperties(_physicalDevice, nullptr, &extensionCount, nullptr);
+	std::vector<VkExtensionProperties> extensions(extensionCount);
+	vkEnumerateDeviceExtensionProperties(_physicalDevice, nullptr, &extensionCount, extensions.data());
+
+	for (VkExtensionProperties& extension : extensions)
+	{
+		if (strcmp(extension.extensionName, VK_NV_MESH_SHADER_EXTENSION_NAME) == 0)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static VkDevice createDevice(
+	VkPhysicalDevice _physicalDevice,
+	uint32_t _queueFamilyIndex,
+	bool _bMeshShadingSupported)
+{
+	std::vector<const char*> deviceExtensions =
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME
 	};
+
+	if (_bMeshShadingSupported)
+	{
+		deviceExtensions.push_back(VK_NV_MESH_SHADER_EXTENSION_NAME);
+	}
 
 	float queuePriority = 1.0f;
 	VkDeviceQueueCreateInfo queueCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
@@ -177,28 +204,37 @@ VkDevice createDevice(
 	queueCreateInfo.pQueuePriorities = &queuePriority;
 
 	VkPhysicalDeviceFeatures2 deviceFeatures2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-	deviceFeatures2.features.pipelineStatisticsQuery = true;
-	deviceFeatures2.features.shaderInt16 = true;
+	deviceFeatures2.features.pipelineStatisticsQuery = VK_TRUE;
+	deviceFeatures2.features.shaderInt16 = VK_TRUE;
 
 	VkPhysicalDeviceVulkan11Features deviceFeatures11 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-	deviceFeatures11.storageBuffer16BitAccess = true;
+	deviceFeatures11.storageBuffer16BitAccess = VK_TRUE;
 
 	VkPhysicalDeviceVulkan12Features deviceFeatures12 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-	deviceFeatures12.storageBuffer8BitAccess = true;
-	deviceFeatures12.uniformAndStorageBuffer8BitAccess = true;
-	deviceFeatures12.storagePushConstant8 = true;
-	deviceFeatures12.shaderFloat16 = true;
-	deviceFeatures12.shaderInt8 = true;
+	deviceFeatures12.storageBuffer8BitAccess = VK_TRUE;
+	deviceFeatures12.uniformAndStorageBuffer8BitAccess = VK_TRUE;
+	deviceFeatures12.storagePushConstant8 = VK_TRUE;
+	deviceFeatures12.shaderFloat16 = VK_TRUE;
+	deviceFeatures12.shaderInt8 = VK_TRUE;
+
+	VkPhysicalDeviceMeshShaderFeaturesNV meshShaderFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV };
+	meshShaderFeatures.taskShader = VK_TRUE;
+	meshShaderFeatures.meshShader = VK_TRUE;
 
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	deviceCreateInfo.queueCreateInfoCount = 1;
 	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-	deviceCreateInfo.enabledExtensionCount = ARRAY_SIZE(deviceExtensions);
-	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
+	deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
+	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
 	deviceCreateInfo.pNext = &deviceFeatures2;
 	deviceFeatures2.pNext = &deviceFeatures11;
 	deviceFeatures11.pNext = &deviceFeatures12;
+
+	if (_bMeshShadingSupported)
+	{
+		deviceFeatures12.pNext = &meshShaderFeatures;
+	}
 
 	VkDevice device;
 	VK_CALL(vkCreateDevice(_physicalDevice, &deviceCreateInfo, nullptr, &device));
@@ -206,26 +242,7 @@ VkDevice createDevice(
 	return device;
 }
 
-uint32_t tryFindMemoryType(
-	VkPhysicalDevice _physicalDevice,
-	uint32_t _typeFilter,
-	VkMemoryPropertyFlags _memoryFlags)
-{
-	VkPhysicalDeviceMemoryProperties memoryProperties;
-	vkGetPhysicalDeviceMemoryProperties(_physicalDevice, &memoryProperties);
-
-	for (uint32_t memoryTypeIndex = 0; memoryTypeIndex < memoryProperties.memoryTypeCount; ++memoryTypeIndex)
-	{
-		if ((_typeFilter & (1 << memoryTypeIndex)) && (memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags & _memoryFlags) == _memoryFlags)
-		{
-			return memoryTypeIndex;
-		}
-	}
-
-	return -1;
-}
-
-VkCommandPool createCommandPool(
+static VkCommandPool createCommandPool(
 	VkDevice _device,
 	uint32_t _queueFamilyIndex)
 {
@@ -239,17 +256,79 @@ VkCommandPool createCommandPool(
 	return commandPool;
 }
 
+Device createDevice(
+	GLFWwindow* _pWindow)
+{
+	VK_CALL(volkInitialize());
+
+	Device device{};
+
+	device.instance = createInstance();
+	device.debugMessenger = createDebugMessenger(device.instance);
+	device.surface = createSurface(device.instance, _pWindow);
+	
+	device.physicalDevice = tryPickPhysicalDevice(device.instance, device.surface);
+	assert(device.physicalDevice != VK_NULL_HANDLE);
+
+	device.graphicsQueue.index = tryGetGraphicsQueueFamilyIndex(device.physicalDevice);
+	assert(device.graphicsQueue.index != ~0u);
+
+	device.bMeshShadingPipelineSupported = isMeshShadingPipelineSupported(device.physicalDevice);
+	device.deviceVk = createDevice(device.physicalDevice, device.graphicsQueue.index, device.bMeshShadingPipelineSupported);
+
+	vkGetDeviceQueue(device.deviceVk, device.graphicsQueue.index, 0, &device.graphicsQueue.queueVk);
+
+	device.commandPool = createCommandPool(device.deviceVk, device.graphicsQueue.index);
+
+	return device;
+}
+
+void destroyDevice(Device& _rDevice)
+{
+	vkDestroyCommandPool(_rDevice.deviceVk, _rDevice.commandPool, nullptr);
+
+	vkDestroyDevice(_rDevice.deviceVk, nullptr);
+
+	if (_rDevice.debugMessenger != VK_NULL_HANDLE)
+	{
+		vkDestroyDebugUtilsMessengerEXT(_rDevice.instance, _rDevice.debugMessenger, nullptr);
+	}
+
+	vkDestroySurfaceKHR(_rDevice.instance, _rDevice.surface, nullptr);
+	vkDestroyInstance(_rDevice.instance, nullptr);
+
+	_rDevice = {};
+}
+
+uint32_t tryFindMemoryType(
+	Device _device,
+	uint32_t _typeFilter,
+	VkMemoryPropertyFlags _memoryFlags)
+{
+	VkPhysicalDeviceMemoryProperties memoryProperties;
+	vkGetPhysicalDeviceMemoryProperties(_device.physicalDevice, &memoryProperties);
+
+	for (uint32_t memoryTypeIndex = 0; memoryTypeIndex < memoryProperties.memoryTypeCount; ++memoryTypeIndex)
+	{
+		if ((_typeFilter & (1 << memoryTypeIndex)) && (memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags & _memoryFlags) == _memoryFlags)
+		{
+			return memoryTypeIndex;
+		}
+	}
+
+	return ~0u;
+}
+
 VkCommandBuffer createCommandBuffer(
-	VkDevice _device,
-	VkCommandPool _commandPool)
+	Device _device)
 {
 	VkCommandBufferAllocateInfo allocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-	allocateInfo.commandPool = _commandPool;
+	allocateInfo.commandPool = _device.commandPool;
 	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocateInfo.commandBufferCount = 1;
 
 	VkCommandBuffer commandBuffer;
-	VK_CALL(vkAllocateCommandBuffers(_device, &allocateInfo, &commandBuffer));
+	VK_CALL(vkAllocateCommandBuffers(_device.deviceVk, &allocateInfo, &commandBuffer));
 
 	return commandBuffer;
 }

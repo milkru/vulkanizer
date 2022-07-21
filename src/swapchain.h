@@ -11,11 +11,9 @@ struct Swapchain
 
 Swapchain createSwapchain(
 	GLFWwindow* _pWindow,
-	VkSurfaceKHR _surface,
-	VkPhysicalDevice _physicalDevice,
-	VkDevice _device,
+	Device _device,
 	VkSwapchainKHR _oldSwapchain = VK_NULL_HANDLE);
 
 void destroySwapchain(
-	VkDevice _device,
+	Device _device,
 	Swapchain& _rSwapchain);

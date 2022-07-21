@@ -1,10 +1,7 @@
 #pragma once
 
 void initializeGUI(
-	VkPhysicalDevice _physicalDevice,
-	VkDevice _device,
-	VkQueue _copyQueue,
-	VkCommandPool _commandPool,
+	Device _device,
 	VkRenderPass _renderPass,
 	float _width,
 	float _height);
@@ -22,11 +19,13 @@ struct InfoGUI
 	uint64_t clippingPrimitives = 0ull;
 	uint64_t fragmentShaderInvocations = 0ull;
 	uint64_t computeShaderInvocations = 0ull;
+	bool bMeshShadingPipelineSupported = false;
+	bool bMeshShadingPipelineEnabled = false;
 };
 
 void newFrameGUI(
 	GLFWwindow* _pWindow,
-	InfoGUI _info);
+	InfoGUI& _rInfo);
 
 void drawFrameGUI(
 	VkCommandBuffer _commandBuffer,

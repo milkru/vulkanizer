@@ -1,12 +1,11 @@
 #include "common.h"
-#include "gui.h"
 #include "device.h"
-#include "resources.h"
+#include "gui.h"
 #include "pipeline.h"
-#include "utils.h"
+#include "resources.h"
+#include "sync.h"
 
 #include <stdio.h>
-#include <array>
 #include <algorithm>
 #include <imgui.h>
 
@@ -18,14 +17,11 @@ struct GUI
 		glm::vec2 translate;
 	} pushConstantBlock;
 
-	VkPhysicalDevice physicalDevice;
-	VkDevice device;
-	Buffer vertexBuffers[kMaxFramesInFlightCount];
-	Buffer indexBuffers[kMaxFramesInFlightCount];
+	Device device;
+	std::array<Buffer, kMaxFramesInFlightCount> vertexBuffers;
+	std::array<Buffer, kMaxFramesInFlightCount> indexBuffers;
 	VkSampler fontSampler;
-	VkDeviceMemory fontMemory;
-	VkImage fontImage;
-	VkImageView fontImageView ;
+	Image fontImage;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
 	VkDescriptorSetLayout descriptorSetLayout;
@@ -36,9 +32,7 @@ static GUI& getGUI()
 	return *(GUI*)ImGui::GetIO().BackendRendererUserData;
 }
 
-static void createFontTexture(
-	VkQueue _copyQueue,
-	VkCommandPool _commandPool)
+static void createFontTexture()
 {
 	ImGuiIO& io = ImGui::GetIO();
 	GUI& gui = getGUI();
@@ -48,57 +42,21 @@ static void createFontTexture(
 	int32_t textureHeight;
 	io.Fonts->GetTexDataAsRGBA32(&fontData, &textureWidth, &textureHeight);
 
-	VkImageCreateInfo imageCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-	imageCreateInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-	imageCreateInfo.extent.width = textureWidth;
-	imageCreateInfo.extent.height = textureHeight;
-	imageCreateInfo.extent.depth = 1;
-	imageCreateInfo.mipLevels = 1;
-	imageCreateInfo.arrayLayers = 1;
-	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-	imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	gui.fontImage = createImage(gui.device, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureWidth, textureHeight, VK_FORMAT_R8G8B8A8_UNORM);
 
-	VK_CALL(vkCreateImage(gui.device, &imageCreateInfo, nullptr, &gui.fontImage));
+	VkDeviceSize uploadSize = VkDeviceSize(4 * textureWidth * textureHeight) * sizeof(char);
 
-	VkMemoryRequirements memoryRequirements;
-	vkGetImageMemoryRequirements(gui.device, gui.fontImage, &memoryRequirements);
-
-	uint32_t memoryTypeIndex = tryFindMemoryType(gui.physicalDevice, memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	assert(memoryTypeIndex != -1);
-
-	VkMemoryAllocateInfo memoryAllocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-	memoryAllocateInfo.allocationSize = memoryRequirements.size;
-	memoryAllocateInfo.memoryTypeIndex = memoryTypeIndex;
-
-	VK_CALL(vkAllocateMemory(gui.device, &memoryAllocateInfo, nullptr, &gui.fontMemory));
-	VK_CALL(vkBindImageMemory(gui.device, gui.fontImage, gui.fontMemory, 0));
-
-	VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-	imageViewCreateInfo.image = gui.fontImage;
-	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	imageViewCreateInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-	imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	imageViewCreateInfo.subresourceRange.levelCount = 1;
-	imageViewCreateInfo.subresourceRange.layerCount = 1;
-
-	VK_CALL(vkCreateImageView(gui.device, &imageViewCreateInfo, nullptr, &gui.fontImageView));
-
-	VkDeviceSize uploadSize = textureWidth * textureHeight * 4 * sizeof(char);
-
-	Buffer stagingBuffer = createBuffer(gui.physicalDevice, gui.device, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	Buffer stagingBuffer = createBuffer(gui.device, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uploadSize);
 
 	memcpy(stagingBuffer.data, fontData, uploadSize);
 
-	immediateSubmit(gui.device, _copyQueue, _commandPool, [&](VkCommandBuffer _commandBuffer)
+	immediateSubmit(gui.device, [&](VkCommandBuffer _commandBuffer)
 		{
 			transferImageLayout(
 				_commandBuffer,
-				gui.fontImage,
+				gui.fontImage.imageVk,
 				VK_IMAGE_ASPECT_COLOR_BIT,
 				VK_IMAGE_LAYOUT_UNDEFINED,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -115,7 +73,7 @@ static void createFontTexture(
 			vkCmdCopyBufferToImage(
 				_commandBuffer,
 				stagingBuffer.bufferVk,
-				gui.fontImage,
+				gui.fontImage.imageVk,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				1,
 				&bufferCopyRegion
@@ -123,7 +81,7 @@ static void createFontTexture(
 
 			transferImageLayout(
 				_commandBuffer,
-				gui.fontImage,
+				gui.fontImage.imageVk,
 				VK_IMAGE_ASPECT_COLOR_BIT,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -143,42 +101,27 @@ static void createFontTexture(
 	samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 	samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 
-	VK_CALL(vkCreateSampler(gui.device, &samplerCreateInfo, nullptr, &gui.fontSampler));
+	VK_CALL(vkCreateSampler(gui.device.deviceVk, &samplerCreateInfo, nullptr, &gui.fontSampler));
 }
 
 static void createPipeline(
-	VkRenderPass _renderPass)
+	VkRenderPass _renderPass,
+	std::vector<Shader> _shaders)
 {
 	GUI& gui = getGUI();
 
-	VkPushConstantRange pushConstantRange{};
-	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	pushConstantRange.offset = 0;
-	pushConstantRange.size = sizeof(gui.pushConstantBlock);
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStageCreateInfos;
+	shaderStageCreateInfos.reserve(_shaders.size());
 
-	gui.pipelineLayout = createPipelineLayout(gui.device, { gui.descriptorSetLayout }, { pushConstantRange });
-
-	std::vector<uint8_t> vertexShaderCode = readFile("shaders/gui.vert.spv");
-	VkShaderModule vertexShader = createShaderModule(gui.device, vertexShaderCode.size(), (uint32_t*)vertexShaderCode.data());
-
-	VkPipelineShaderStageCreateInfo vertexShaderStageCreatenfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-	vertexShaderStageCreatenfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	vertexShaderStageCreatenfo.module = vertexShader;
-	vertexShaderStageCreatenfo.pName = "main";
-
-	std::vector<uint8_t> fragmentShaderCode = readFile("shaders/gui.frag.spv");
-	VkShaderModule fragmentShader = createShaderModule(gui.device, fragmentShaderCode.size(), (uint32_t*)fragmentShaderCode.data());
-
-	VkPipelineShaderStageCreateInfo fragmentShaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-	fragmentShaderStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	fragmentShaderStageCreateInfo.module = fragmentShader;
-	fragmentShaderStageCreateInfo.pName = "main";
-
-	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] =
+	for (const Shader& shader : _shaders)
 	{
-		vertexShaderStageCreatenfo,
-		fragmentShaderStageCreateInfo
-	};
+		VkPipelineShaderStageCreateInfo shaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+		shaderStageCreateInfo.stage = shader.stage;
+		shaderStageCreateInfo.module = shader.module;
+		shaderStageCreateInfo.pName = shader.entry.c_str();
+
+		shaderStageCreateInfos.push_back(shaderStageCreateInfo);
+	}
 
 	VkVertexInputBindingDescription vertexInputBindings[1]{};
 	vertexInputBindings[0].binding = 0;
@@ -267,8 +210,8 @@ static void createPipeline(
 	dynamicStateCreateInfo.pDynamicStates = dynamicStates;
 
 	VkGraphicsPipelineCreateInfo pipelineCreateInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-	pipelineCreateInfo.stageCount = ARRAY_SIZE(shaderStageCreateInfos);
-	pipelineCreateInfo.pStages = shaderStageCreateInfos;
+	pipelineCreateInfo.stageCount = uint32_t(shaderStageCreateInfos.size());
+	pipelineCreateInfo.pStages = shaderStageCreateInfos.data();
 	pipelineCreateInfo.pVertexInputState = &vertexInputStateCreateInfo;
 	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyStateCreateInfo;
 	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
@@ -283,17 +226,11 @@ static void createPipeline(
 	pipelineCreateInfo.basePipelineIndex = -1;
 	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-	VK_CALL(vkCreateGraphicsPipelines(gui.device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &gui.graphicsPipeline));
-
-	vkDestroyShaderModule(gui.device, fragmentShader, nullptr);
-	vkDestroyShaderModule(gui.device, vertexShader, nullptr);
+	VK_CALL(vkCreateGraphicsPipelines(gui.device.deviceVk, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &gui.graphicsPipeline));
 }
 
 void initializeGUI(
-	VkPhysicalDevice _physicalDevice,
-	VkDevice _device,
-	VkQueue _copyQueue,
-	VkCommandPool _commandPool,
+	Device _device,
 	VkRenderPass _renderPass,
 	float _windowWidth,
 	float _windowHeight)
@@ -317,49 +254,49 @@ void initializeGUI(
 	}
 
 	GUI& gui = getGUI();
-	gui.physicalDevice = _physicalDevice;
 	gui.device = _device;
 
-	createFontTexture(_copyQueue, _commandPool);
+	createFontTexture();
 
-	// TODO-MILKRU: Once SpirV reflect gets integrated, generate descriptor set layouts automatically.
-	VkDescriptorSetLayoutBinding bindings[1]{};
-	bindings[0].binding = 0;
-	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	bindings[0].descriptorCount = 1;
-	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	Shader vertexShader = createShader(gui.device, "shaders/gui.vert.spv");
+	Shader fragmentShader = createShader(gui.device, "shaders/gui.frag.spv");
 
-	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-	descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-	descriptorSetLayoutCreateInfo.pBindings = bindings;
-	descriptorSetLayoutCreateInfo.bindingCount = ARRAY_SIZE(bindings);
+	gui.descriptorSetLayout = createDescriptorSetLayout(gui.device.deviceVk, { vertexShader, fragmentShader });
 
-	VK_CALL(vkCreateDescriptorSetLayout(gui.device, &descriptorSetLayoutCreateInfo, nullptr, &gui.descriptorSetLayout));
+	VkPushConstantRange pushConstantRange{};
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	pushConstantRange.offset = 0;
+	pushConstantRange.size = sizeof(gui.pushConstantBlock);
 
-	createPipeline(_renderPass);
+	gui.pipelineLayout = createPipelineLayout(gui.device.deviceVk, { gui.descriptorSetLayout }, { pushConstantRange });
+
+	createPipeline(_renderPass, { vertexShader, fragmentShader });
+
+	destroyShader(gui.device, fragmentShader);
+	destroyShader(gui.device, vertexShader);
 }
 
 void terminateGUI()
 {
 	GUI& gui = getGUI();
 
-	for (uint32_t bufferIndex = 0; bufferIndex < ARRAY_SIZE(gui.vertexBuffers); ++bufferIndex)
+	for (Buffer& vertexBuffer : gui.vertexBuffers)
 	{
-		destroyBuffer(gui.device, gui.vertexBuffers[bufferIndex]);
+		destroyBuffer(gui.device, vertexBuffer);
 	}
 
-	for (uint32_t bufferIndex = 0; bufferIndex < ARRAY_SIZE(gui.vertexBuffers); ++bufferIndex)
+	for (Buffer& indexBuffer : gui.indexBuffers)
 	{
-		destroyBuffer(gui.device, gui.indexBuffers[bufferIndex]);
+		destroyBuffer(gui.device, indexBuffer);
 	}
 
-	vkDestroyImage(gui.device, gui.fontImage, nullptr);
-	vkDestroyImageView(gui.device, gui.fontImageView, nullptr);
-	vkFreeMemory(gui.device, gui.fontMemory, nullptr);
-	vkDestroySampler(gui.device, gui.fontSampler, nullptr);
-	vkDestroyPipeline(gui.device, gui.graphicsPipeline, nullptr);
-	vkDestroyPipelineLayout(gui.device, gui.pipelineLayout, nullptr);
-	vkDestroyDescriptorSetLayout(gui.device, gui.descriptorSetLayout, nullptr);
+	vkDestroySampler(gui.device.deviceVk, gui.fontSampler, nullptr);
+
+	destroyImage(gui.device, gui.fontImage);
+
+	vkDestroyPipeline(gui.device.deviceVk, gui.graphicsPipeline, nullptr);
+	vkDestroyPipelineLayout(gui.device.deviceVk, gui.pipelineLayout, nullptr);
+	vkDestroyDescriptorSetLayout(gui.device.deviceVk, gui.descriptorSetLayout, nullptr);
 
 	IM_DELETE(&gui);
 
@@ -420,14 +357,14 @@ void plotTimeGraph(
 	sprintf(title, "%s Time: %.2f ms", _rState.name, _newPoint);
 
 	const float kMinPlotValue = 0.0f;
-	const float kMaxPlotValue = 40.0f;
+	const float kMaxPlotValue = 20.0f;
 	ImGui::PlotLines("", &_rState.points[0], _rState.points.size(), 0,
 		title, kMinPlotValue, kMaxPlotValue, ImVec2(270.0f, 50.0f));
 }
 
 void newFrameGUI(
 	GLFWwindow* _pWindow,
-	InfoGUI _info)
+	InfoGUI& _rInfo)
 {
 	newGlfwFrame(_pWindow);
 
@@ -435,33 +372,48 @@ void newFrameGUI(
 
 	ImGuiIO& io = ImGui::GetIO();
 
-	ImGui::SetNextWindowPos(ImVec2(25, 30), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowBgAlpha(ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) ? 0.8f : 0.4f);
+	{
+		ImGui::SetNextWindowPos(ImVec2(25, 30), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowBgAlpha(ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) ? 0.8f : 0.4f);
 
-	ImGui::Begin("Performance", 0, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
+		ImGui::Begin("Performance", 0, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
 
-	ImGui::Text("Device: %s", _info.deviceName);
-	ImGui::Separator();
+		ImGui::Text("Device: %s", _rInfo.deviceName);
+		ImGui::Separator();
 
-	static TimeGraphState cpuGraphState{};
-	cpuGraphState.name = "CPU";
-	plotTimeGraph(1.e3 * io.DeltaTime, cpuGraphState);
+		static TimeGraphState cpuGraphState{};
+		cpuGraphState.name = "CPU";
+		plotTimeGraph(1.e3 * io.DeltaTime, cpuGraphState);
 
-	static TimeGraphState gpuGraphState{};
-	gpuGraphState.name = "GPU";
-	plotTimeGraph(_info.gpuTime, gpuGraphState);
+		static TimeGraphState gpuGraphState{};
+		gpuGraphState.name = "GPU";
+		plotTimeGraph(_rInfo.gpuTime, gpuGraphState);
 
-	ImGui::Separator();
+		ImGui::Separator();
 
-	ImGui::Text("Input Assembly Vertices:     %lld", _info.inputAssemblyVertices);
-	ImGui::Text("Input Assembly Primitives:   %lld", _info.inputAssemblyPrimitives);
-	ImGui::Text("Vertex Shader Invocations:   %lld", _info.vertexShaderInvocations);
-	ImGui::Text("Clipping Invocations:        %lld", _info.clippingInvocations);
-	ImGui::Text("Clipping Primitives:         %lld", _info.clippingPrimitives);
-	ImGui::Text("Fragment Shader Invocations: %lld", _info.fragmentShaderInvocations);
-	ImGui::Text("Compute Shader Invocations:  %lld", _info.computeShaderInvocations);
+		ImGui::Text("Input Assembly Vertices:     %lld", _rInfo.inputAssemblyVertices);
+		ImGui::Text("Input Assembly Primitives:   %lld", _rInfo.inputAssemblyPrimitives);
+		ImGui::Text("Vertex Shader Invocations:   %lld", _rInfo.vertexShaderInvocations);
+		ImGui::Text("Clipping Invocations:        %lld", _rInfo.clippingInvocations);
+		ImGui::Text("Clipping Primitives:         %lld", _rInfo.clippingPrimitives);
+		ImGui::Text("Fragment Shader Invocations: %lld", _rInfo.fragmentShaderInvocations);
+		ImGui::Text("Compute Shader Invocations:  %lld", _rInfo.computeShaderInvocations);
 
-	ImGui::End();
+		ImGui::End();
+	}
+
+	{
+		ImGui::SetNextWindowPos(ImVec2(25, 350), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowBgAlpha(ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) ? 0.8f : 0.4f);
+
+		ImGui::Begin("Settings", 0, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
+
+		ImGui::BeginDisabled(!_rInfo.bMeshShadingPipelineSupported);
+		ImGui::Checkbox("Mesh Shading Pipeline", &_rInfo.bMeshShadingPipelineEnabled);
+		ImGui::EndDisabled();
+
+		ImGui::End();
+	}
 
 	ImGui::Render();
 }
@@ -485,7 +437,7 @@ static void updateBuffers(
 	{
 		destroyBuffer(gui.device, gui.vertexBuffers[_frameIndex]);
 
-		gui.vertexBuffers[_frameIndex] = createBuffer(gui.physicalDevice, gui.device, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		gui.vertexBuffers[_frameIndex] = createBuffer(gui.device, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vertexBufferSize);
 	}
 
@@ -493,7 +445,7 @@ static void updateBuffers(
 	{
 		destroyBuffer(gui.device, gui.indexBuffers[_frameIndex]);
 
-		gui.indexBuffers[_frameIndex] = createBuffer(gui.physicalDevice, gui.device, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+		gui.indexBuffers[_frameIndex] = createBuffer(gui.device, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, indexBufferSize);
 	}
 
@@ -541,7 +493,7 @@ void drawFrameGUI(
 
 	VkDescriptorImageInfo fontImageDescriptorInfo{};
 	fontImageDescriptorInfo.sampler = gui.fontSampler;
-	fontImageDescriptorInfo.imageView = gui.fontImageView;
+	fontImageDescriptorInfo.imageView = gui.fontImage.view;
 	fontImageDescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	VkWriteDescriptorSet writeDescriptorSets[1]{};

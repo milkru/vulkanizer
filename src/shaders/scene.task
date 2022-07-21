@@ -1,0 +1,24 @@
+#version 450
+
+#extension GL_NV_mesh_shader: require
+
+#include "constants.h"
+
+layout(local_size_x = kShaderGroupSizeNV) in;
+
+taskNV out Task
+{
+	uint meshletOffset;
+} outTask;
+
+void main()
+{
+	uint meshletIndex = gl_WorkGroupID.x;
+	uint threadIndex = gl_LocalInvocationID.x;
+
+	if (threadIndex == 0)
+	{
+		gl_TaskCountNV = kShaderGroupSizeNV;
+		outTask.meshletOffset = kShaderGroupSizeNV * meshletIndex;
+	}
+}

@@ -1,73 +1,62 @@
 #include "common.h"
-#include "resources.h"
 #include "device.h"
+#include "pipeline.h"
+#include "resources.h"
 
 #include <string.h>
 
 Buffer createBuffer(
-	VkPhysicalDevice _physicalDevice,
-	VkDevice _device,
+	Device _device,
 	VkBufferUsageFlags _usageFlags,
 	VkMemoryPropertyFlags _memoryFlags,
-	VkDeviceSize _size)
+	VkDeviceSize _size,
+	void* _pContents)
 {
+	assert(_size > 0);
+
+	if (_pContents)
+	{
+		_usageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	}
+
 	VkBufferCreateInfo bufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	bufferCreateInfo.size = _size;
 	bufferCreateInfo.usage = _usageFlags;
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	Buffer buffer{};
-	VK_CALL(vkCreateBuffer(_device, &bufferCreateInfo, nullptr, &buffer.bufferVk));
+	VK_CALL(vkCreateBuffer(_device.deviceVk, &bufferCreateInfo, nullptr, &buffer.bufferVk));
 
 	buffer.size = _size;
 
 	VkMemoryRequirements memoryRequirements;
-	vkGetBufferMemoryRequirements(_device, buffer.bufferVk, &memoryRequirements);
+	vkGetBufferMemoryRequirements(_device.deviceVk, buffer.bufferVk, &memoryRequirements);
 
-	uint32_t memoryTypeIndex = tryFindMemoryType(_physicalDevice, memoryRequirements.memoryTypeBits, _memoryFlags);
-	assert(memoryTypeIndex != -1);
+	uint32_t memoryTypeIndex = tryFindMemoryType(_device, memoryRequirements.memoryTypeBits, _memoryFlags);
+	assert(memoryTypeIndex != ~0u);
 
 	VkMemoryAllocateInfo allocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	allocateInfo.allocationSize = memoryRequirements.size;
 	allocateInfo.memoryTypeIndex = memoryTypeIndex;
 
-	VK_CALL(vkAllocateMemory(_device, &allocateInfo, nullptr, &buffer.memory));
+	VK_CALL(vkAllocateMemory(_device.deviceVk, &allocateInfo, nullptr, &buffer.memory));
 
-	vkBindBufferMemory(_device, buffer.bufferVk, buffer.memory, 0);
+	vkBindBufferMemory(_device.deviceVk, buffer.bufferVk, buffer.memory, 0);
 
 	if (_memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
 	{
 		// Persistently mapped memory, which should be faster on NVidia.
-		vkMapMemory(_device, buffer.memory, 0, _size, 0, &buffer.data);
+		vkMapMemory(_device.deviceVk, buffer.memory, 0, _size, 0, &buffer.data);
 	}
-
-	return buffer;
-}
-
-Buffer createBuffer(
-	VkPhysicalDevice _physicalDevice,
-	VkDevice _device,
-	VkQueue _queue,
-	VkCommandPool _commandPool,
-	VkBufferUsageFlags _usageFlags,
-	VkDeviceSize _size,
-	void* _pContents)
-{
-	if (_pContents)
-	{
-		_usageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	}
-
-	Buffer buffer = createBuffer(_physicalDevice, _device, _usageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, _size);
 
 	if (_pContents)
 	{
-		Buffer stagingBuffer = createBuffer(_physicalDevice, _device, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		Buffer stagingBuffer = createBuffer(_device, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, _size);
 
 		memcpy(stagingBuffer.data, _pContents, stagingBuffer.size);
 
-		immediateSubmit(_device, _queue, _commandPool, [&](VkCommandBuffer _commandBuffer)
+		immediateSubmit(_device, [&](VkCommandBuffer _commandBuffer)
 			{
 				VkBufferCopy copyRegion{};
 				copyRegion.size = _size;
@@ -81,18 +70,105 @@ Buffer createBuffer(
 }
 
 void destroyBuffer(
-	VkDevice _device,
+	Device _device,
 	Buffer& _rBuffer)
 {
 	if (_rBuffer.data)
 	{
-		vkUnmapMemory(_device, _rBuffer.memory);
+		vkUnmapMemory(_device.deviceVk, _rBuffer.memory);
 	}
 
-	vkDestroyBuffer(_device, _rBuffer.bufferVk, nullptr);
-	vkFreeMemory(_device, _rBuffer.memory, nullptr);
+	vkDestroyBuffer(_device.deviceVk, _rBuffer.bufferVk, nullptr);
+	vkFreeMemory(_device.deviceVk, _rBuffer.memory, nullptr);
 
 	_rBuffer = {};
+}
+
+VkImageView createImageView(
+	VkDevice _device,
+	VkImage _image,
+	VkFormat _format)
+{
+	VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+	imageViewCreateInfo.image = _image;
+	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	imageViewCreateInfo.format = _format;
+	imageViewCreateInfo.subresourceRange.aspectMask = (_format == VK_FORMAT_D32_SFLOAT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageViewCreateInfo.subresourceRange.levelCount = 1;
+	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+	imageViewCreateInfo.subresourceRange.layerCount = 1;
+
+	VkImageView imageView;
+	VK_CALL(vkCreateImageView(_device, &imageViewCreateInfo, 0, &imageView));
+
+	return imageView;
+}
+
+Image createImage(
+	Device _device,
+	VkImageUsageFlags _usage,
+	VkMemoryPropertyFlags _memoryFlags,
+	uint32_t _width,
+	uint32_t _height,
+	VkFormat _format,
+	VkImageLayout _layout)
+{
+	VkImageCreateInfo imageCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageCreateInfo.format = _format;
+	imageCreateInfo.extent.width = _width;
+	imageCreateInfo.extent.height = _height;
+	imageCreateInfo.extent.depth = 1;
+	imageCreateInfo.mipLevels = 1;
+	imageCreateInfo.arrayLayers = 1;
+	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCreateInfo.usage = _usage;
+	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	Image image{};
+	image.format = _format;
+
+	VK_CALL(vkCreateImage(_device.deviceVk, &imageCreateInfo, nullptr, &image.imageVk));
+
+	VkMemoryRequirements memoryRequirements;
+	vkGetImageMemoryRequirements(_device.deviceVk, image.imageVk, &memoryRequirements);
+
+	uint32_t memoryTypeIndex = tryFindMemoryType(_device, memoryRequirements.memoryTypeBits, _memoryFlags);
+	assert(memoryTypeIndex != ~0u);
+
+	VkMemoryAllocateInfo allocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+	allocateInfo.allocationSize = memoryRequirements.size;
+	allocateInfo.memoryTypeIndex;
+
+	VK_CALL(vkAllocateMemory(_device.deviceVk, &allocateInfo, nullptr, &image.memory));
+	VK_CALL(vkBindImageMemory(_device.deviceVk, image.imageVk, image.memory, 0));
+
+	image.view = createImageView(_device.deviceVk, image.imageVk, _format);
+
+	if (_layout != VK_IMAGE_LAYOUT_UNDEFINED)
+	{
+		immediateSubmit(_device, [&](VkCommandBuffer _commandBuffer)
+			{
+				transferImageLayout(_commandBuffer, image.imageVk, VK_IMAGE_ASPECT_DEPTH_BIT,
+					VK_IMAGE_LAYOUT_UNDEFINED, _layout);
+			});
+	}
+
+	return image;
+}
+
+void destroyImage(
+	Device _device,
+	Image& _rImage)
+{
+	vkDestroyImage(_device.deviceVk, _rImage.imageVk, nullptr);
+	vkDestroyImageView(_device.deviceVk, _rImage.view, nullptr);
+	vkFreeMemory(_device.deviceVk, _rImage.memory, nullptr);
+
+	_rImage = {};
 }
 
 // Image layout transfers.
@@ -222,4 +298,28 @@ void transferImageLayout(
 		0, nullptr,
 		0, nullptr,
 		1, &imageMemoryBarrier);
+}
+
+VkDescriptorSetLayout createDescriptorSetLayout(
+	VkDevice _device,
+	std::initializer_list<Shader> _shaders)
+{
+	std::vector<VkDescriptorSetLayoutBinding> bindings;
+	for (const Shader& shader : _shaders)
+	{
+		for (const VkDescriptorSetLayoutBinding& binding : shader.bindings)
+		{
+			bindings.push_back(binding);
+		}
+	}
+
+	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+	descriptorSetLayoutCreateInfo.bindingCount = uint32_t(bindings.size());
+	descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+
+	VkDescriptorSetLayout descriptorSetLayout;
+	VK_CALL(vkCreateDescriptorSetLayout(_device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayout));
+
+	return descriptorSetLayout;
 }

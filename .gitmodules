@@ -25,3 +25,6 @@
 [submodule "3rdparty/imgui"]
 	path = 3rdparty/imgui
 	url = https://github.com/ocornut/imgui
+[submodule "3rdparty/SPIRV-Reflect"]
+	path = 3rdparty/SPIRV-Reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect

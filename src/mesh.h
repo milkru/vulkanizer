@@ -11,7 +11,11 @@ struct Mesh
 {
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
+	std::vector<meshopt_Meshlet> meshlets;
+	std::vector<uint32_t> meshletVertices;
+	std::vector<uint8_t> meshletTriangles;
 };
 
 Mesh loadMesh(
-	const char* _pFilePath);
+	const char* _pFilePath,
+	bool _bMeshShadingSupported);

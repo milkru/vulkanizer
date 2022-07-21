@@ -18,12 +18,12 @@ struct QueryPool
 };
 
 QueryPool createQueryPool(
-	VkDevice _device,
+	Device _device,
 	VkQueryType _type,
 	uint32_t _queryCount);
 
 void destroyQueryPool(
-	VkDevice _device,
+	Device _device,
 	QueryPool& _rQueryPool);
 
 void resetQueryPool(
@@ -57,7 +57,7 @@ void endQuery(
 	uint32_t _query);
 
 void updateQueryPoolResults(
-	VkDevice _device,
+	Device _device,
 	QueryPool& _rQueryPool);
 
 uint64_t getQueryResult(
@@ -65,9 +65,7 @@ uint64_t getQueryResult(
 	uint32_t _query,
 	uint32_t _statisticsOffset = 0);
 
-#define GPU_PROFILE 1
-
-#if GPU_PROFILE
+#if GPU_QUERY_PROFILING
 
 #define SCOPED_GPU_NAME(_name) ScopedGpu##_name
 
@@ -111,8 +109,8 @@ enum class StatType : uint8_t
 
 bool tryGetBlockResult(
 	QueryPool& _rQueryPool,
-	VkPhysicalDeviceLimits _limits,
 	const char* _name,
+	VkPhysicalDeviceLimits _limits,
 	double& _rResult);
 
 bool tryGetStatsResult(
@@ -121,8 +119,8 @@ bool tryGetStatsResult(
 	StatType _type,
 	uint64_t& _rResult);
 
-#define GPU_BLOCK_RESULT(_rQueryPool, _limits, _name, _rResult) \
-	tryGetBlockResult(_rQueryPool, _limits, GPU_BLOCK_NAME(_name), _rResult)
+#define GPU_BLOCK_RESULT(_rQueryPool, _name, _limits, _rResult) \
+	tryGetBlockResult(_rQueryPool, GPU_BLOCK_NAME(_name), _limits, _rResult)
 
 #define GPU_STATS_RESULT(_rQueryPool, _name, _type, _rResult) \
 	tryGetStatsResult(_rQueryPool, GPU_STATS_NAME(_name), _type, _rResult)
@@ -131,7 +129,7 @@ bool tryGetStatsResult(
 
 #define GPU_BLOCK(_commandBuffer, _rQueryPool, _name)
 #define GPU_STATS(_commandBuffer, _rQueryPool, _name)
-#define GPU_BLOCK_RESULT(_rQueryPool, _limits, _name, _rResult)
+#define GPU_BLOCK_RESULT(_rQueryPool, _name, _limits, _rResult)
 #define GPU_STATS_RESULT(_rQueryPool, _name, _type, _rResult)
 
-#endif // GPU_PROFILE
+#endif // GPU_QUERY_PROFILING

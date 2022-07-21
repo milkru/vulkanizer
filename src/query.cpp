@@ -1,8 +1,6 @@
 #include "common.h"
+#include "device.h"
 #include "query.h"
-
-#include <map>
-#include <string>
 
 static const VkQueryPipelineStatisticFlagBits kPipelineStats[] =
 {
@@ -22,7 +20,7 @@ static uint32_t getQueryResultElementCount(
 }
 
 QueryPool createQueryPool(
-	VkDevice _device,
+	Device _device,
 	VkQueryType _type,
 	uint32_t _queryCount)
 {
@@ -46,21 +44,21 @@ QueryPool createQueryPool(
 		}
 	}
 
-	VK_CALL(vkCreateQueryPool(_device, &queryPoolCreateInfo, nullptr, &queryPool.queryPoolVk));
+	VK_CALL(vkCreateQueryPool(_device.deviceVk, &queryPoolCreateInfo, nullptr, &queryPool.queryPoolVk));
 
 	uint32_t resultElementCount = getQueryResultElementCount(queryPool.type);
-	queryPool.queryResults.resize(resultElementCount * _queryCount);
+	queryPool.queryResults.resize(size_t(resultElementCount) * _queryCount);
 
 	return queryPool;
 }
 
 void destroyQueryPool(
-	VkDevice _device,
+	Device _device,
 	QueryPool& _rQueryPool)
 {
 	if (_rQueryPool.queryPoolVk != VK_NULL_HANDLE)
 	{
-		vkDestroyQueryPool(_device, _rQueryPool.queryPoolVk, nullptr);
+		vkDestroyQueryPool(_device.deviceVk, _rQueryPool.queryPoolVk, nullptr);
 	}
 
 	_rQueryPool.queryResults.clear();
@@ -135,7 +133,7 @@ void endQuery(
 }
 
 void updateQueryPoolResults(
-	VkDevice _device,
+	Device _device,
 	QueryPool& _rQueryPool)
 {
 	if (_rQueryPool.allocatedQueries == 0)
@@ -145,7 +143,7 @@ void updateQueryPoolResults(
 
 	uint32_t resultElementCount = getQueryResultElementCount(_rQueryPool.type);
 
-	VkResult result = vkGetQueryPoolResults(_device, _rQueryPool.queryPoolVk, 0, _rQueryPool.allocatedQueries,
+	VkResult result = vkGetQueryPoolResults(_device.deviceVk, _rQueryPool.queryPoolVk, 0, _rQueryPool.allocatedQueries,
 		_rQueryPool.queryResults.size() * sizeof(uint64_t), _rQueryPool.queryResults.data(), resultElementCount * sizeof(uint64_t),
 		VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
 
@@ -158,10 +156,15 @@ uint64_t getQueryResult(
 	uint32_t _statisticsOffset)
 {
 	assert(_rQueryPool.status == QueryPoolStatus::Available);
+	assert(_statisticsOffset < ARRAY_SIZE(kPipelineStats));
 
 	uint32_t resultElementCount = getQueryResultElementCount(_rQueryPool.type);
-	return _rQueryPool.queryResults[resultElementCount * _query + _statisticsOffset];
+	return _rQueryPool.queryResults[size_t(resultElementCount) * _query + _statisticsOffset];
 }
+
+#if GPU_QUERY_PROFILING
+
+#include <map>
 
 static std::map<std::string, Queries> declaredNameQueries;
 
@@ -181,7 +184,6 @@ static Queries getOrCreateDeclarationQueries(
 	return queries;
 }
 
-#if GPU_PROFILE
 ScopedGpuBlock::ScopedGpuBlock(
 	VkCommandBuffer _commandBuffer,
 	QueryPool& _rQueryPool,
@@ -218,8 +220,8 @@ ScopedGpuStats::~ScopedGpuStats()
 
 bool tryGetBlockResult(
 	QueryPool& _rQueryPool,
-	VkPhysicalDeviceLimits _limits,
 	const char* _name,
+	VkPhysicalDeviceLimits _limits,
 	double& _rResult)
 {
 	assert(_rQueryPool.type == VK_QUERY_TYPE_TIMESTAMP);
@@ -248,7 +250,6 @@ bool tryGetStatsResult(
 	StatType _type,
 	uint64_t& _rResult)
 {
-	assert(ARRAY_SIZE(kPipelineStats) == uint32_t(StatType::COUNT));
 	assert(_rQueryPool.type == VK_QUERY_TYPE_PIPELINE_STATISTICS);
 
 	if (_rQueryPool.status != QueryPoolStatus::Available)
@@ -263,4 +264,5 @@ bool tryGetStatsResult(
 
 	return true;
 }
-#endif // GPU_PROFILE
+
+#endif // GPU_QUERY_PROFILING

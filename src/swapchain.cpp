@@ -1,5 +1,8 @@
 #include "common.h"
+#include "device.h"
 #include "swapchain.h"
+#include "pipeline.h"
+#include "resources.h"
 
 const uint32_t kPreferredSwapchainImageCount = 2;
 const bool kbEnableVSync = true;
@@ -16,7 +19,7 @@ static VkSurfaceFormatKHR chooseSwapchainSurfaceFormat(
 	std::vector<VkSurfaceFormatKHR> availableSurfaceFormats(surfaceFormatCount);
 	VK_CALL(vkGetPhysicalDeviceSurfaceFormatsKHR(_physicalDevice, _surface, &surfaceFormatCount, availableSurfaceFormats.data()));
 
-	for (const auto& availableSurfaceFormat : availableSurfaceFormats)
+	for (const VkSurfaceFormatKHR& availableSurfaceFormat : availableSurfaceFormats)
 	{
 		if (availableSurfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM)
 		{
@@ -37,7 +40,7 @@ static VkPresentModeKHR chooseSwapchainPresentMode(
 	std::vector<VkPresentModeKHR> availablePresentModes(presentModeCount);
 	VK_CALL(vkGetPhysicalDeviceSurfacePresentModesKHR(_physicalDevice, _surface, &presentModeCount, availablePresentModes.data()));
 
-	for (const auto& availablePresentMode : availablePresentModes)
+	for (const VkPresentModeKHR& availablePresentMode : availablePresentModes)
 	{
 		if (kbEnableVSync)
 		{
@@ -121,77 +124,52 @@ static VkSwapchainKHR createSwapchain(
 	return swapchain;
 }
 
-static VkImageView createImageView(
-	VkDevice _device,
-	VkImage _image,
-	VkFormat _format)
-{
-	VkImageAspectFlags aspectMask = (_format == VK_FORMAT_D32_SFLOAT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-
-	VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-	imageViewCreateInfo.image = _image;
-	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	imageViewCreateInfo.format = _format;
-	imageViewCreateInfo.subresourceRange.aspectMask = aspectMask;
-	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-	imageViewCreateInfo.subresourceRange.levelCount = 1;
-	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-	imageViewCreateInfo.subresourceRange.layerCount = 1;
-
-	VkImageView imageView;
-	VK_CALL(vkCreateImageView(_device, &imageViewCreateInfo, 0, &imageView));
-
-	return imageView;
-}
-
 Swapchain createSwapchain(
 	GLFWwindow* _pWindow,
-	VkSurfaceKHR _surface,
-	VkPhysicalDevice _physicalDevice,
-	VkDevice _device,
+	Device _device,
 	VkSwapchainKHR _oldSwapchain)
 {
-	VkSurfaceFormatKHR surfaceFormat = chooseSwapchainSurfaceFormat(_surface, _physicalDevice);
-	VkPresentModeKHR presentMode = chooseSwapchainPresentMode(_surface, _physicalDevice);
-	VkExtent2D extent = chooseSwapchainExtent(_surface, _physicalDevice, _pWindow);
+	VkSurfaceFormatKHR surfaceFormat = chooseSwapchainSurfaceFormat(_device.surface, _device.physicalDevice);
+	VkPresentModeKHR presentMode = chooseSwapchainPresentMode(_device.surface, _device.physicalDevice);
+	VkExtent2D extent = chooseSwapchainExtent(_device.surface, _device.physicalDevice, _pWindow);
 
 	Swapchain swapchain{};
 	swapchain.imageFormat = surfaceFormat.format;
 	swapchain.extent = extent;
 
 	swapchain.swapchainVk = createSwapchain(
-		_surface,
-		_physicalDevice,
-		_device,
+		_device.surface,
+		_device.physicalDevice,
+		_device.deviceVk,
 		surfaceFormat,
 		presentMode,
 		extent,
 		_oldSwapchain);
 
 	uint32_t imageCount;
-	vkGetSwapchainImagesKHR(_device, swapchain.swapchainVk, &imageCount, nullptr);
+	vkGetSwapchainImagesKHR(_device.deviceVk, swapchain.swapchainVk, &imageCount, nullptr);
 	swapchain.images.resize(imageCount);
-	vkGetSwapchainImagesKHR(_device, swapchain.swapchainVk, &imageCount, swapchain.images.data());
+	vkGetSwapchainImagesKHR(_device.deviceVk, swapchain.swapchainVk, &imageCount, swapchain.images.data());
 
 	swapchain.imageViews.resize(swapchain.images.size());
 	for (size_t imageIndex = 0; imageIndex < swapchain.imageViews.size(); ++imageIndex)
 	{
-		swapchain.imageViews[imageIndex] = createImageView(_device, swapchain.images[imageIndex], swapchain.imageFormat);
+		swapchain.imageViews[imageIndex] = createImageView(_device.deviceVk, swapchain.images[imageIndex], swapchain.imageFormat);
 	}
 
 	return swapchain;
 }
 
 void destroySwapchain(
-	VkDevice _device,
+	Device _device,
 	Swapchain& _rSwapchain)
 {
 	for (VkImageView imageView : _rSwapchain.imageViews)
 	{
-		vkDestroyImageView(_device, imageView, nullptr);
+		vkDestroyImageView(_device.deviceVk, imageView, nullptr);
 	}
 
-	vkDestroySwapchainKHR(_device, _rSwapchain.swapchainVk, nullptr);
+	vkDestroySwapchainKHR(_device.deviceVk, _rSwapchain.swapchainVk, nullptr);
 
 	_rSwapchain = {};
 }
