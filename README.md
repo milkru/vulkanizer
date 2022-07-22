@@ -14,7 +14,7 @@ Rendering engine prototype made with `Vulkan 1.2`. Code is written using a [simp
 * GPU profiling using query timestamps and pipeline statistics
 * Programmable vertex fetching with 12 byte vertices
 * Custom [Dear ImGui](https://github.com/ocornut/imgui) Vulkan backend with performance window
-* Automatic descriptor set layout generation with [SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect)
+* Automatic descriptor set layout creation with [SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect)
 * NVidia [Mesh Shading Pipeline](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/) support, with traditional pipeline still supported
 * Depth buffering with [reversed-Z](https://developer.nvidia.com/content/depth-precision-visualized)
 
