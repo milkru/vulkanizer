@@ -22,9 +22,10 @@ struct GUI
 	std::array<Buffer, kMaxFramesInFlightCount> indexBuffers;
 	VkSampler fontSampler;
 	Image fontImage;
-	VkPipelineLayout pipelineLayout;
-	VkPipeline graphicsPipeline;
 	VkDescriptorSetLayout descriptorSetLayout;
+	VkPipelineLayout pipelineLayout;
+	VkDescriptorUpdateTemplate descriptorUpdateTemplate;
+	VkPipeline graphicsPipeline;
 };
 
 static GUI& getGUI()
@@ -105,7 +106,8 @@ static void createFontTexture()
 }
 
 static void createPipeline(
-	VkRenderPass _renderPass,
+	VkFormat _colorFormat,
+	VkFormat _depthFormat,
 	std::vector<Shader> _shaders)
 {
 	GUI& gui = getGUI();
@@ -209,6 +211,11 @@ static void createPipeline(
 	dynamicStateCreateInfo.dynamicStateCount = ARRAY_SIZE(dynamicStates);
 	dynamicStateCreateInfo.pDynamicStates = dynamicStates;
 
+	VkPipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR };
+	pipelineRenderingCreateInfo.colorAttachmentCount = 1;
+	pipelineRenderingCreateInfo.pColorAttachmentFormats = &_colorFormat;
+	pipelineRenderingCreateInfo.depthAttachmentFormat = _depthFormat;
+
 	VkGraphicsPipelineCreateInfo pipelineCreateInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 	pipelineCreateInfo.stageCount = uint32_t(shaderStageCreateInfos.size());
 	pipelineCreateInfo.pStages = shaderStageCreateInfos.data();
@@ -221,17 +228,20 @@ static void createPipeline(
 	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
 	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
 	pipelineCreateInfo.layout = gui.pipelineLayout;
-	pipelineCreateInfo.renderPass = _renderPass;
+	pipelineCreateInfo.renderPass = VK_NULL_HANDLE;
+	pipelineCreateInfo.pNext = &pipelineRenderingCreateInfo;
 	pipelineCreateInfo.subpass = 0;
 	pipelineCreateInfo.basePipelineIndex = -1;
 	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+
 
 	VK_CALL(vkCreateGraphicsPipelines(gui.device.deviceVk, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &gui.graphicsPipeline));
 }
 
 void initializeGUI(
 	Device _device,
-	VkRenderPass _renderPass,
+	VkFormat _colorFormat,
+	VkFormat _depthFormat,
 	float _windowWidth,
 	float _windowHeight)
 {
@@ -261,16 +271,17 @@ void initializeGUI(
 	Shader vertexShader = createShader(gui.device, "shaders/gui.vert.spv");
 	Shader fragmentShader = createShader(gui.device, "shaders/gui.frag.spv");
 
-	gui.descriptorSetLayout = createDescriptorSetLayout(gui.device.deviceVk, { vertexShader, fragmentShader });
-
 	VkPushConstantRange pushConstantRange{};
 	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	pushConstantRange.offset = 0;
 	pushConstantRange.size = sizeof(gui.pushConstantBlock);
 
+	gui.descriptorSetLayout = createDescriptorSetLayout(gui.device.deviceVk, { vertexShader, fragmentShader });
 	gui.pipelineLayout = createPipelineLayout(gui.device.deviceVk, { gui.descriptorSetLayout }, { pushConstantRange });
+	gui.descriptorUpdateTemplate = createDescriptorUpdateTemplate(gui.device.deviceVk,
+		gui.descriptorSetLayout, gui.pipelineLayout, VK_PIPELINE_BIND_POINT_GRAPHICS, { vertexShader, fragmentShader });
 
-	createPipeline(_renderPass, { vertexShader, fragmentShader });
+	createPipeline(_colorFormat, _depthFormat, { vertexShader, fragmentShader });
 
 	destroyShader(gui.device, fragmentShader);
 	destroyShader(gui.device, vertexShader);
@@ -295,6 +306,7 @@ void terminateGUI()
 	destroyImage(gui.device, gui.fontImage);
 
 	vkDestroyPipeline(gui.device.deviceVk, gui.graphicsPipeline, nullptr);
+	vkDestroyDescriptorUpdateTemplate(gui.device.deviceVk, gui.descriptorUpdateTemplate, nullptr);
 	vkDestroyPipelineLayout(gui.device.deviceVk, gui.pipelineLayout, nullptr);
 	vkDestroyDescriptorSetLayout(gui.device.deviceVk, gui.descriptorSetLayout, nullptr);
 
@@ -496,15 +508,8 @@ void drawFrameGUI(
 	fontImageDescriptorInfo.imageView = gui.fontImage.view;
 	fontImageDescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-	VkWriteDescriptorSet writeDescriptorSets[1]{};
-	writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writeDescriptorSets[0].dstBinding = 0;
-	writeDescriptorSets[0].descriptorCount = 1;
-	writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	writeDescriptorSets[0].pImageInfo = &fontImageDescriptorInfo;
-
-	vkCmdPushDescriptorSetKHR(_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		gui.pipelineLayout, 0, ARRAY_SIZE(writeDescriptorSets), writeDescriptorSets);
+	vkCmdPushDescriptorSetWithTemplateKHR(_commandBuffer,
+		gui.descriptorUpdateTemplate, gui.pipelineLayout, 0, &fontImageDescriptorInfo);
 
 	ImDrawData* pDrawData = ImGui::GetDrawData();
 	int32_t globalIndexOffset = 0;

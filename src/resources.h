@@ -55,7 +55,3 @@ void transferImageLayout(
 	VkImageLayout _newLayout,
 	VkPipelineStageFlags _srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 	VkPipelineStageFlags _dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-
-VkDescriptorSetLayout createDescriptorSetLayout(
-	VkDevice _device,
-	std::initializer_list<Shader> _shaders);

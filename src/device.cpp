@@ -35,7 +35,7 @@ static VkInstance createInstance()
 	applicationInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 	applicationInfo.pEngineName = "vulkanizer";
 	applicationInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	applicationInfo.apiVersion = VK_API_VERSION_1_2;
+	applicationInfo.apiVersion = VK_API_VERSION_1_3;
 
 	VkInstanceCreateInfo instanceCreateInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	instanceCreateInfo.pApplicationInfo = &applicationInfo;
@@ -123,6 +123,47 @@ static uint32_t tryGetGraphicsQueueFamilyIndex(
 	return ~0u;
 }
 
+static const char* kRequiredDeviceExtensions[] =
+{
+	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+	VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
+};
+
+static bool isDeviceExtensionAvailable(
+	const std::vector<VkExtensionProperties>& _availableExtensions,
+	const char* _extensionName)
+{
+	for (const VkExtensionProperties& availableExtension : _availableExtensions)
+	{
+		if (strcmp(availableExtension.extensionName, _extensionName) == 0)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool areRequiredDeviceExtensionSupported(const VkPhysicalDevice inDevice)
+{
+	uint32_t extensionCount;
+	vkEnumerateDeviceExtensionProperties(inDevice, nullptr, &extensionCount, nullptr);
+
+	std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+	vkEnumerateDeviceExtensionProperties(inDevice, nullptr, &extensionCount, availableExtensions.data());
+
+	for (const char* requiredExtensionName : kRequiredDeviceExtensions)
+	{
+		if (!isDeviceExtensionAvailable(availableExtensions, requiredExtensionName))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 static VkPhysicalDevice tryPickPhysicalDevice(
 	VkInstance _instance,
 	VkSurfaceKHR _surface)
@@ -150,6 +191,11 @@ static VkPhysicalDevice tryPickPhysicalDevice(
 		VkBool32 bSurfaceSupported;
 		vkGetPhysicalDeviceSurfaceSupportKHR(potentialPhysicalDevice, graphicsQueueIndex, _surface, &bSurfaceSupported);
 		if (bSurfaceSupported == VK_FALSE)
+		{
+			continue;
+		}
+
+		if (!areRequiredDeviceExtensionSupported(potentialPhysicalDevice))
 		{
 			continue;
 		}
@@ -186,12 +232,7 @@ static VkDevice createDevice(
 	uint32_t _queueFamilyIndex,
 	bool _bMeshShadingSupported)
 {
-	std::vector<const char*> deviceExtensions =
-	{
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME
-	};
-
+	std::vector<const char*> deviceExtensions(kRequiredDeviceExtensions, std::end(kRequiredDeviceExtensions));
 	if (_bMeshShadingSupported)
 	{
 		deviceExtensions.push_back(VK_NV_MESH_SHADER_EXTENSION_NAME);
@@ -217,6 +258,9 @@ static VkDevice createDevice(
 	deviceFeatures12.shaderFloat16 = VK_TRUE;
 	deviceFeatures12.shaderInt8 = VK_TRUE;
 
+	VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR };
+	dynamicRenderingFeatures.dynamicRendering = VK_TRUE;
+
 	VkPhysicalDeviceMeshShaderFeaturesNV meshShaderFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV };
 	meshShaderFeatures.taskShader = VK_TRUE;
 	meshShaderFeatures.meshShader = VK_TRUE;
@@ -230,10 +274,11 @@ static VkDevice createDevice(
 	deviceCreateInfo.pNext = &deviceFeatures2;
 	deviceFeatures2.pNext = &deviceFeatures11;
 	deviceFeatures11.pNext = &deviceFeatures12;
+	deviceFeatures12.pNext = &dynamicRenderingFeatures;
 
 	if (_bMeshShadingSupported)
 	{
-		deviceFeatures12.pNext = &meshShaderFeatures;
+		dynamicRenderingFeatures.pNext = &meshShaderFeatures;
 	}
 
 	VkDevice device;

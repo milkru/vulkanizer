@@ -2,7 +2,8 @@
 
 void initializeGUI(
 	Device _device,
-	VkRenderPass _renderPass,
+	VkFormat _colorFormat,
+	VkFormat _depthFormat,
 	float _width,
 	float _height);
 

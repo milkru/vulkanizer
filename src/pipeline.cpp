@@ -52,6 +52,21 @@ static VkDescriptorType getDescriptorType(const SpvReflectDescriptorType _reflec
 	}
 }
 
+static std::vector<VkDescriptorSetLayoutBinding> getDescriptorSetLayoutBindings(
+	std::initializer_list<Shader> _shaders)
+{
+	std::vector<VkDescriptorSetLayoutBinding> bindings;
+	for (const Shader& shader : _shaders)
+	{
+		for (const VkDescriptorSetLayoutBinding& binding : shader.bindings)
+		{
+			bindings.push_back(binding);
+		}
+	}
+
+	return bindings;
+}
+
 Shader createShader(
 	Device _device,
 	const char* _pFilePath)
@@ -105,6 +120,23 @@ void destroyShader(
 	_rShader = {};
 }
 
+VkDescriptorSetLayout createDescriptorSetLayout(
+	VkDevice _device,
+	std::initializer_list<Shader> _shaders)
+{
+	std::vector<VkDescriptorSetLayoutBinding> bindings = getDescriptorSetLayoutBindings(_shaders);
+
+	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+	descriptorSetLayoutCreateInfo.bindingCount = uint32_t(bindings.size());
+	descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+
+	VkDescriptorSetLayout descriptorSetLayout;
+	VK_CALL(vkCreateDescriptorSetLayout(_device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayout));
+
+	return descriptorSetLayout;
+}
+
 VkPipelineLayout createPipelineLayout(
 	VkDevice _device,
 	std::vector<VkDescriptorSetLayout> _descriptorSetLayouts,
@@ -120,4 +152,41 @@ VkPipelineLayout createPipelineLayout(
 	VK_CALL(vkCreatePipelineLayout(_device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout));
 
 	return pipelineLayout;
+}
+
+VkDescriptorUpdateTemplate createDescriptorUpdateTemplate(
+	VkDevice _device,
+	VkDescriptorSetLayout _descriptorSetLayout,
+	VkPipelineLayout _pipelineLayout,
+	VkPipelineBindPoint _pipelineBindPoint,
+	std::initializer_list<Shader> _shaders)
+{
+	std::vector<VkDescriptorSetLayoutBinding> bindings = getDescriptorSetLayoutBindings(_shaders);
+
+	std::vector<VkDescriptorUpdateTemplateEntry> entries(bindings.size());
+	for (uint32_t descriptorIndex = 0; descriptorIndex < bindings.size(); ++descriptorIndex)
+	{
+		VkDescriptorSetLayoutBinding binding = bindings[descriptorIndex];
+		VkDescriptorUpdateTemplateEntry& entry = entries[descriptorIndex];
+
+		entry.dstBinding = binding.binding;
+		entry.dstArrayElement = 0;
+		entry.descriptorCount = 1;
+		entry.descriptorType = binding.descriptorType;
+		entry.offset = descriptorIndex * sizeof(DescriptorInfo);
+		entry.stride = sizeof(DescriptorInfo);
+	}
+
+	VkDescriptorUpdateTemplateCreateInfo descriptorUpdateTemplateCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO };
+	descriptorUpdateTemplateCreateInfo.descriptorUpdateEntryCount = uint32_t(entries.size());
+	descriptorUpdateTemplateCreateInfo.pDescriptorUpdateEntries = entries.data();
+	descriptorUpdateTemplateCreateInfo.templateType = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR;
+	descriptorUpdateTemplateCreateInfo.descriptorSetLayout = _descriptorSetLayout;
+	descriptorUpdateTemplateCreateInfo.pipelineBindPoint = _pipelineBindPoint;
+	descriptorUpdateTemplateCreateInfo.pipelineLayout = _pipelineLayout;
+
+	VkDescriptorUpdateTemplate descriptorUpdateTemplate;
+	VK_CALL(vkCreateDescriptorUpdateTemplate(_device, &descriptorUpdateTemplateCreateInfo, nullptr, &descriptorUpdateTemplate));
+
+	return descriptorUpdateTemplate;
 }

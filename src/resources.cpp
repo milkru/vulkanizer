@@ -299,27 +299,3 @@ void transferImageLayout(
 		0, nullptr,
 		1, &imageMemoryBarrier);
 }
-
-VkDescriptorSetLayout createDescriptorSetLayout(
-	VkDevice _device,
-	std::initializer_list<Shader> _shaders)
-{
-	std::vector<VkDescriptorSetLayoutBinding> bindings;
-	for (const Shader& shader : _shaders)
-	{
-		for (const VkDescriptorSetLayoutBinding& binding : shader.bindings)
-		{
-			bindings.push_back(binding);
-		}
-	}
-
-	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-	descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-	descriptorSetLayoutCreateInfo.bindingCount = uint32_t(bindings.size());
-	descriptorSetLayoutCreateInfo.pBindings = bindings.data();
-
-	VkDescriptorSetLayout descriptorSetLayout;
-	VK_CALL(vkCreateDescriptorSetLayout(_device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayout));
-
-	return descriptorSetLayout;
-}

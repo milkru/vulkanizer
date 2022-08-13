@@ -16,7 +16,34 @@ void destroyShader(
 	Device _device,
 	Shader& _rShader);
 
+union DescriptorInfo
+{
+	DescriptorInfo(
+		VkBuffer _buffer,
+		VkDeviceSize _offset = 0,
+		VkDeviceSize _range = VK_WHOLE_SIZE)
+	{
+		bufferInfo.buffer = _buffer;
+		bufferInfo.offset = _offset;
+		bufferInfo.range = _range;
+	}
+
+	VkDescriptorImageInfo imageInfo;
+	VkDescriptorBufferInfo bufferInfo;
+};
+
+VkDescriptorSetLayout createDescriptorSetLayout(
+	VkDevice _device,
+	std::initializer_list<Shader> _shaders);
+
 VkPipelineLayout createPipelineLayout(
 	VkDevice _device,
 	std::vector<VkDescriptorSetLayout> _descriptorSetLayouts,
 	std::vector<VkPushConstantRange> _pushConstantRanges);
+
+VkDescriptorUpdateTemplate createDescriptorUpdateTemplate(
+	VkDevice _device,
+	VkDescriptorSetLayout _descriptorSetLayout,
+	VkPipelineLayout _pipelineLayout,
+	VkPipelineBindPoint _pipelineBindPoint,
+	std::initializer_list<Shader> _shaders);
