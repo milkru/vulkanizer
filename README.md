@@ -9,15 +9,15 @@ Rendering engine prototype made with `Vulkan 1.3`. Code is written using a [simp
 * Mesh loading using [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader)
 * Mesh optimizations using [meshoptimizer](https://github.com/zeux/meshoptimizer)
 * Single mesh rendering
-* In-flight frames
+* NVidia [Mesh Shading Pipeline](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/) support, with traditional pipeline still supported
+* Programmable vertex fetching with 12 byte vertices
+* Depth buffering with [reversed-Z](https://developer.nvidia.com/content/depth-precision-visualized)
+* Automatic descriptor set layout creation with [SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect)
+* Vulkan's dynamic rendering, push descriptors and descriptor update templates support
 * CPU profiling using [easy_profiler](https://github.com/yse/easy_profiler)
 * GPU profiling using query timestamps and pipeline statistics
-* Programmable vertex fetching with 12 byte vertices
 * Custom [Dear ImGui](https://github.com/ocornut/imgui) Vulkan backend with *Performance* and *Settings* windows
-* Automatic descriptor set layout creation with [SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect)
-* NVidia [Mesh Shading Pipeline](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/) support, with traditional pipeline still supported
-* Depth buffering with [reversed-Z](https://developer.nvidia.com/content/depth-precision-visualized)
-* Vulkan's dynamic rendering, push descriptors and descriptor update templates support
+* In-flight frames
 
 ## Installation
 This project uses [CMake](https://cmake.org/download/) as a build tool. Since the project is built using `Vulkan`, the latest [Vulkan SDK](https://vulkan.lunarg.com) is required.
