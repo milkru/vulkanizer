@@ -1,5 +1,5 @@
 ## About
-Rendering engine prototype made with `Vulkan 1.2`. Code is written using a [simpler C++ coding style](https://gist.github.com/bkaradzic/2e39896bc7d8c34e042b). Project is written for the `C++11` standard and `x64` system. Currently the code is tested only on `Windows`, using `MSVC` (Visual Studio) and `MINGW` (Visual Studio Code) compilers. `Linux` is not completely supported at the moment, but it should be easy to port, since all third party libraries are cross platform.
+Rendering engine prototype made with `Vulkan 1.3`. Code is written using a [simpler C++ coding style](https://gist.github.com/bkaradzic/2e39896bc7d8c34e042b). Project is written for the `C++11` standard and `x64` system. Currently the code is tested only on `Windows`, using `MSVC` (Visual Studio) and `MINGW` (Visual Studio Code) compilers. `Linux` is not completely supported at the moment, but it should be easy to port, since all third party libraries are cross platform.
 
 ![Demo](https://github.com/milkru/data_resources/blob/main/vulkanizer/mesh_bunny.PNG)
 
@@ -17,6 +17,7 @@ Rendering engine prototype made with `Vulkan 1.2`. Code is written using a [simp
 * Automatic descriptor set layout creation with [SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect)
 * NVidia [Mesh Shading Pipeline](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/) support, with traditional pipeline still supported
 * Depth buffering with [reversed-Z](https://developer.nvidia.com/content/depth-precision-visualized)
+* Vulkan's dynamic rendering, push descriptors and descriptor update templates support
 
 ## Installation
 This project uses [CMake](https://cmake.org/download/) as a build tool. Since the project is built using `Vulkan`, the latest [Vulkan SDK](https://vulkan.lunarg.com) is required.
