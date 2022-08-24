@@ -16,6 +16,21 @@ struct Meshlet
 	uint triangleOffset;
 	uint vertexCount;
 	uint triangleCount;
+
+	float center[3];
+	float radius;
+
+	int8_t coneAxis[3];
+	int8_t coneCutoff;
+};
+
+struct Globals
+{
+	mat4 model;
+	mat4 view;
+	mat4 proj;
+	vec3 cameraPosition;
+	uint enableConeCulling;
 };
 
 #endif // GEOMETRY_H

@@ -422,6 +422,9 @@ void newFrameGUI(
 
 		ImGui::BeginDisabled(!_rInfo.bMeshShadingPipelineSupported);
 		ImGui::Checkbox("Mesh Shading Pipeline", &_rInfo.bMeshShadingPipelineEnabled);
+		ImGui::BeginDisabled(!_rInfo.bMeshShadingPipelineEnabled);
+		ImGui::Checkbox("Meshlet Cone Culling", &_rInfo.bMeshletConeCulling);
+		ImGui::EndDisabled();
 		ImGui::EndDisabled();
 
 		ImGui::End();

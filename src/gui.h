@@ -22,6 +22,7 @@ struct InfoGUI
 	uint64_t computeShaderInvocations = 0ull;
 	bool bMeshShadingPipelineSupported = false;
 	bool bMeshShadingPipelineEnabled = false;
+	bool bMeshletConeCulling = false;
 };
 
 void newFrameGUI(

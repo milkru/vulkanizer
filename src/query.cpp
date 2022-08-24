@@ -156,6 +156,8 @@ uint64_t getQueryResult(
 	uint32_t _statisticsOffset)
 {
 	assert(_rQueryPool.status == QueryPoolStatus::Available);
+
+	// TODO-MILKRU: Replace with static_assert once cpp17 or higher gets integrate.
 	assert(_statisticsOffset < ARRAY_SIZE(kPipelineStats));
 
 	uint32_t resultElementCount = getQueryResultElementCount(_rQueryPool.type);

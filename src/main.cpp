@@ -182,16 +182,16 @@ int32_t main(int32_t argc, const char** argv)
 		alignas(16) glm::mat4 model;
 		alignas(16) glm::mat4 view;
 		alignas(16) glm::mat4 proj;
-	} cameraMatrices;
+		glm::vec3 cameraPosition;
+		uint32_t enableConeCulling;
+	} globals;
 
-	// TODO-MILKRU: Implement descriptorTemplates.
-	// Unify templates, descriptorSets and pipelineLayouts.
-	// Implement better resource binding system.
+	// TODO-MILKRU: Unify templates, descriptorSets and pipelineLayouts.
 
 	VkPushConstantRange pushConstantRange{};
 	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	pushConstantRange.offset = 0;
-	pushConstantRange.size = sizeof(cameraMatrices);
+	pushConstantRange.size = sizeof(globals);
 
 	VkDescriptorSetLayout descriptorSetLayout =
 		createDescriptorSetLayout(device.deviceVk, { vertShader, fragShader });
@@ -205,10 +205,11 @@ int32_t main(int32_t argc, const char** argv)
 	VkPipeline graphicsPipeline =
 		createGraphicsPipeline(device.deviceVk, pipelineLayout, { swapchain.imageFormat }, depthImage.format, { vertShader, fragShader });
 
+	// TODO-MILKRU: Infer shader stages using SpirV.
 	VkPushConstantRange pushConstantRangeNV{};
-	pushConstantRangeNV.stageFlags = VK_SHADER_STAGE_MESH_BIT_NV;
+	pushConstantRangeNV.stageFlags = VK_SHADER_STAGE_TASK_BIT_NV | VK_SHADER_STAGE_MESH_BIT_NV;
 	pushConstantRangeNV.offset = 0;
-	pushConstantRangeNV.size = sizeof(cameraMatrices);
+	pushConstantRangeNV.size = sizeof(globals);
 
 	VkDescriptorSetLayout descriptorSetLayoutNV = device.bMeshShadingPipelineSupported ?
 		createDescriptorSetLayout(device.deviceVk, { taskShader, meshShader, fragShader }) : VK_NULL_HANDLE;
@@ -244,7 +245,7 @@ int32_t main(int32_t argc, const char** argv)
 
 	Buffer meshletBuffer = device.bMeshShadingPipelineSupported ?
 		createBuffer(device, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		sizeof(meshopt_Meshlet) * mesh.meshlets.size(), mesh.meshlets.data()) : Buffer();
+		sizeof(Meshlet) * mesh.meshlets.size(), mesh.meshlets.data()) : Buffer();
 
 	Buffer meshletVerticesBuffer = device.bMeshShadingPipelineSupported ?
 		createBuffer(device, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -286,6 +287,7 @@ int32_t main(int32_t argc, const char** argv)
 	infoGUI.deviceName = physicalDeviceProperties.deviceName;
 
 	bool bMeshShadingPipelineEnabled =
+		infoGUI.bMeshletConeCulling =
 		infoGUI.bMeshShadingPipelineEnabled =
 		infoGUI.bMeshShadingPipelineSupported =
 		device.bMeshShadingPipelineSupported;
@@ -407,22 +409,23 @@ int32_t main(int32_t argc, const char** argv)
 					auto currentTime = std::chrono::high_resolution_clock::now();
 					float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-					cameraMatrices.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-					cameraMatrices.view = glm::lookAt(glm::vec3(3.0f, 1.5f, 3.0f), glm::vec3(0.0f, 0.75f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-					cameraMatrices.proj = getInfinitePerspectiveMatrix(glm::radians(45.0f), float(swapchain.extent.width) / float(swapchain.extent.height), 0.1f);
+					globals.cameraPosition = glm::vec3(2.0f, 0.0f, 0.0f);
+					globals.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+					globals.view = glm::lookAt(globals.cameraPosition, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+					globals.proj = getInfinitePerspectiveMatrix(glm::radians(45.0f), float(swapchain.extent.width) / float(swapchain.extent.height), 0.1f);
+					globals.enableConeCulling = infoGUI.bMeshletConeCulling ? 1 : 0;
 				}
 
 				vkCmdPushConstants(commandBuffer,
 					bMeshShadingPipelineEnabled ? pipelineLayoutNV : pipelineLayout,
-					bMeshShadingPipelineEnabled ? VK_SHADER_STAGE_MESH_BIT_NV : VK_SHADER_STAGE_VERTEX_BIT,
-					0, sizeof(cameraMatrices), &cameraMatrices);
+					bMeshShadingPipelineEnabled ? VK_SHADER_STAGE_TASK_BIT_NV | VK_SHADER_STAGE_MESH_BIT_NV : VK_SHADER_STAGE_VERTEX_BIT,
+					0, sizeof(globals), &globals);
 
 				vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					bMeshShadingPipelineEnabled ? graphicsPipelineNV : graphicsPipeline);
 
 				std::vector<DescriptorInfo> descriptorInfos;
 				descriptorInfos.reserve(4);
-				descriptorInfos.push_back(vertexBuffer.bufferVk);
 
 				if (bMeshShadingPipelineEnabled)
 				{
@@ -430,6 +433,8 @@ int32_t main(int32_t argc, const char** argv)
 					descriptorInfos.push_back(meshletVerticesBuffer.bufferVk);
 					descriptorInfos.push_back(meshletTrianglesBuffer.bufferVk);
 				}
+
+				descriptorInfos.push_back(vertexBuffer.bufferVk);
 
 				vkCmdPushDescriptorSetWithTemplateKHR(commandBuffer,
 					bMeshShadingPipelineEnabled ? descriptorUpdateTemplateNV : descriptorUpdateTemplate,

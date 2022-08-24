@@ -14,7 +14,7 @@ source_group("Shader Files" FILES ${GLSL_SRC_FILES})
 foreach(GLSL_FILE ${GLSL_SRC_FILES})
 	get_filename_component(GLSL_FILE_NAME ${GLSL_FILE} NAME)
 	set(SPIRV_FILE "${PROJECT_BINARY_DIR}/shaders/${GLSL_FILE_NAME}.spv")
-	execute_process(COMMAND ${GLSL_COMPILER} ${GLSL_FILE} -o ${SPIRV_FILE})
+	execute_process(COMMAND ${GLSL_COMPILER} ${GLSL_FILE} -o ${SPIRV_FILE} "--target-env=vulkan1.1")
 endforeach(GLSL_FILE)
 
 message("Building Project:")
@@ -72,16 +72,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE volk)
 
 set_property(TARGET volk PROPERTY FOLDER "3rdparty")
 
-message("Adding tinyobjloader:")
-
-set(TINYOBJLOADER_DIR 3rdparty/tinyobjloader)
-add_subdirectory(${TINYOBJLOADER_DIR})
-target_include_directories(${PROJECT_NAME} PRIVATE ${TINYOBJLOADER_DIR})
-target_link_libraries(${PROJECT_NAME} PRIVATE tinyobjloader)
-
-set_property(TARGET tinyobjloader PROPERTY FOLDER "3rdparty/tinyobjloader")
-set_property(TARGET uninstall PROPERTY FOLDER "3rdparty/tinyobjloader")
-
 message("Adding meshoptimizer:")
 
 set(MESHOPTIMIZER_DIR 3rdparty/meshoptimizer)
@@ -133,3 +123,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${SPIRV_REFLECT_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE spirv-reflect-static)
 
 set_property(TARGET spirv-reflect-static PROPERTY FOLDER "3rdparty")
+
+message("Adding fast_obj:")
+
+set(FAST_OBJ_DIR 3rdparty/fast_obj)
+add_subdirectory(${FAST_OBJ_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${FAST_OBJ_DIR})
+target_link_libraries(${PROJECT_NAME} PRIVATE fast_obj_lib)
+
+set_property(TARGET fast_obj_lib PROPERTY FOLDER "3rdparty")

@@ -9,12 +9,10 @@ layout(binding = 0) readonly buffer Vertices { Vertex vertices[]; };
 
 layout(location = 0) out vec3 outColor;
 
-layout (push_constant) uniform CameraMatrices
+layout (push_constant) uniform block
 {
-    mat4 model;
-    mat4 view;
-    mat4 proj;
-} cameraMatrices;
+    Globals globals;
+};
 
 void main()
 {
@@ -38,9 +36,9 @@ void main()
 		vertices[gl_VertexIndex].texCoord[1]);
 
     gl_Position =
-		cameraMatrices.proj *
-		cameraMatrices.view *
-		cameraMatrices.model *
+		globals.proj *
+		globals.view *
+		globals.model *
 		vec4(position, 1.0);
 
     outColor = 0.5 + 0.5 * normal;

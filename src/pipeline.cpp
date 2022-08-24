@@ -52,15 +52,36 @@ static VkDescriptorType getDescriptorType(const SpvReflectDescriptorType _reflec
 	}
 }
 
-static std::vector<VkDescriptorSetLayoutBinding> getDescriptorSetLayoutBindings(
+static bool tryUpdateBindingShaderStage(
+	std::vector<VkDescriptorSetLayoutBinding>& _bindings,
+	VkDescriptorSetLayoutBinding _binding)
+{
+	for (VkDescriptorSetLayoutBinding& shaderBinding : _bindings)
+	{
+		if (shaderBinding.binding == _binding.binding)
+		{
+			shaderBinding.stageFlags |= _binding.stageFlags;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static std::vector<VkDescriptorSetLayoutBinding> mergeDescriptorSetLayoutBindings(
 	std::initializer_list<Shader> _shaders)
 {
 	std::vector<VkDescriptorSetLayoutBinding> bindings;
 	for (const Shader& shader : _shaders)
 	{
-		for (const VkDescriptorSetLayoutBinding& binding : shader.bindings)
+		for (const VkDescriptorSetLayoutBinding& shaderBinding : shader.bindings)
 		{
-			bindings.push_back(binding);
+			if (tryUpdateBindingShaderStage(bindings, shaderBinding))
+			{
+				continue;
+			}
+
+			bindings.push_back(shaderBinding);
 		}
 	}
 
@@ -124,7 +145,7 @@ VkDescriptorSetLayout createDescriptorSetLayout(
 	VkDevice _device,
 	std::initializer_list<Shader> _shaders)
 {
-	std::vector<VkDescriptorSetLayoutBinding> bindings = getDescriptorSetLayoutBindings(_shaders);
+	std::vector<VkDescriptorSetLayoutBinding> bindings = mergeDescriptorSetLayoutBindings(_shaders);
 
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
 	descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
@@ -161,7 +182,7 @@ VkDescriptorUpdateTemplate createDescriptorUpdateTemplate(
 	VkPipelineBindPoint _pipelineBindPoint,
 	std::initializer_list<Shader> _shaders)
 {
-	std::vector<VkDescriptorSetLayoutBinding> bindings = getDescriptorSetLayoutBindings(_shaders);
+	std::vector<VkDescriptorSetLayoutBinding> bindings = mergeDescriptorSetLayoutBindings(_shaders);
 
 	std::vector<VkDescriptorUpdateTemplateEntry> entries(bindings.size());
 	for (uint32_t descriptorIndex = 0; descriptorIndex < bindings.size(); ++descriptorIndex)

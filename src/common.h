@@ -1,7 +1,6 @@
 #pragma once
 
 #include <volk.h>
-#include <meshoptimizer.h>
 #include <GLFW/glfw3.h>
 
 #define GLM_FORCE_RADIANS

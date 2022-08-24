@@ -11,24 +11,22 @@
 layout(local_size_x = kShaderGroupSizeNV) in;
 layout(triangles, max_vertices = kMaxVerticesPerMeshlet, max_primitives = kMaxTrianglesPerMeshlet) out;
 
-layout(binding = 0) readonly buffer Vertices { Vertex vertices[]; };
-layout(binding = 1) readonly buffer Meshlets { Meshlet meshlets[]; };
-layout(binding = 2) readonly buffer MeshletVertices { uint meshletVertices[]; };
-layout(binding = 3) readonly buffer MeshletTriangles { uint meshletTriangles[]; };
+layout(binding = 0) readonly buffer Meshlets { Meshlet meshlets[]; };
+layout(binding = 1) readonly buffer MeshletVertices { uint meshletVertices[]; };
+layout(binding = 2) readonly buffer MeshletTriangles { uint meshletTriangles[]; };
+layout(binding = 3) readonly buffer Vertices { Vertex vertices[]; };
 
 taskNV in Task
 {
-	uint meshletOffset;
+	uint meshletIndices[kShaderGroupSizeNV];
 } inTask;
 
 layout(location = 0) out vec3 outColor[];
 
-layout (push_constant) uniform CameraMatrices
+layout (push_constant) uniform block
 {
-    mat4 model;
-    mat4 view;
-    mat4 proj;
-} cameraMatrices;
+    Globals globals;
+};
 
 vec3 getRandomColor(
 	uint _seed)
@@ -45,12 +43,11 @@ vec3 getRandomColor(
 
 void main()
 {
-	uint meshletIndex = inTask.meshletOffset + gl_WorkGroupID.x;
-	Meshlet meshlet = meshlets[meshletIndex];
-
+	uint groupIndex = gl_WorkGroupID.x;
 	uint threadIndex = gl_LocalInvocationID.x;
-	
-	// This allows loop unrolling.
+	uint meshletIndex = inTask.meshletIndices[groupIndex]; 
+
+	// This allows loop unrolling, since vertexLoops is known at compile time.
 	const uint vertexLoops = (kMaxVerticesPerMeshlet + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
 
 	vec3 color = getRandomColor(meshletIndex);
@@ -59,9 +56,9 @@ void main()
 	for (uint loopIndex = 0; loopIndex < vertexLoops; ++loopIndex)
 	{
 		uint localVertexIndex = threadIndex + loopIndex * kShaderGroupSizeNV;
-		localVertexIndex = min(localVertexIndex, meshlet.vertexCount - 1);
+		localVertexIndex = min(localVertexIndex, meshlets[meshletIndex].vertexCount - 1);
 
-		uint vertexIndex = meshletVertices[meshlet.vertexOffset + localVertexIndex];
+		uint vertexIndex = meshletVertices[meshlets[meshletIndex].vertexOffset + localVertexIndex];
 		
 		vec3 position = vec3(
 			vertices[vertexIndex].position[0],
@@ -83,16 +80,16 @@ void main()
 			vertices[vertexIndex].texCoord[1]);
 
 		gl_MeshVerticesNV[localVertexIndex].gl_Position =
-			cameraMatrices.proj *
-			cameraMatrices.view *
-			cameraMatrices.model *
+			globals.proj *
+			globals.view *
+			globals.model *
 			vec4(position, 1.0);
 
 		outColor[localVertexIndex] = color;
 	}
 
-	uint packedTriangleOffset = meshlet.triangleOffset / 4;
-	uint packedTrianglesMax = (3 * meshlet.triangleCount - 1) / 4;
+	uint packedTriangleOffset = meshlets[meshletIndex].triangleOffset / 4;
+	uint packedTrianglesMax = (3 * meshlets[meshletIndex].triangleCount - 1) / 4;
 	
 	// This allows compiler loop unrolling.
 	const uint triangleLoops = (3 * kMaxTrianglesPerMeshlet + 4 * kShaderGroupSizeNV - 1) / (kShaderGroupSizeNV * 4);
@@ -108,6 +105,6 @@ void main()
 
 	if (threadIndex == 0)
 	{
-		gl_PrimitiveCountNV = meshlet.triangleCount;
+		gl_PrimitiveCountNV = meshlets[meshletIndex].triangleCount;
 	}
 }
