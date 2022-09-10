@@ -5,8 +5,8 @@
 #include "resources.h"
 #include "sync.h"
 
-#include <stdio.h>
 #include <algorithm>
+#include <stdio.h>
 #include <imgui.h>
 
 struct GUI
@@ -365,13 +365,13 @@ void plotTimeGraph(
 	std::rotate(_rState.points.begin(), _rState.points.begin() + 1, _rState.points.end());
 	_rState.points.back() = _newPoint;
 
-	char title[32];
+	char title[64];
 	sprintf(title, "%s Time: %.2f ms", _rState.name, _newPoint);
 
 	const float kMinPlotValue = 0.0f;
 	const float kMaxPlotValue = 20.0f;
 	ImGui::PlotLines("", &_rState.points[0], _rState.points.size(), 0,
-		title, kMinPlotValue, kMaxPlotValue, ImVec2(270.0f, 50.0f));
+		title, kMinPlotValue, kMaxPlotValue, ImVec2(300.0f, 50.0f));
 }
 
 void newFrameGUI(
@@ -397,9 +397,13 @@ void newFrameGUI(
 		cpuGraphState.name = "CPU";
 		plotTimeGraph(1.e3 * io.DeltaTime, cpuGraphState);
 
-		static TimeGraphState gpuGraphState{};
-		gpuGraphState.name = "GPU";
-		plotTimeGraph(_rInfo.gpuTime, gpuGraphState);
+		static TimeGraphState generateDrawsGpuGraphState{};
+		generateDrawsGpuGraphState.name = "Generate Draws GPU";
+		plotTimeGraph(_rInfo.generateDrawsGpuTime, generateDrawsGpuGraphState);
+
+		static TimeGraphState geometryGpuGraphState{};
+		geometryGpuGraphState.name = "Geometry GPU";
+		plotTimeGraph(_rInfo.geometryGpuTime, geometryGpuGraphState);
 
 		ImGui::Separator();
 
@@ -415,15 +419,19 @@ void newFrameGUI(
 	}
 
 	{
-		ImGui::SetNextWindowPos(ImVec2(25, 350), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowPos(ImVec2(25, 410), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowBgAlpha(ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) ? 0.8f : 0.4f);
 
 		ImGui::Begin("Settings", 0, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
 
+		ImGui::Checkbox("Freeze Culling", &_rInfo.bFreezeCullingEnabled);
+		ImGui::Checkbox("Mesh Frustum Culling", &_rInfo.bMeshFrustumCullingEnabled);
+		ImGui::Separator();
 		ImGui::BeginDisabled(!_rInfo.bMeshShadingPipelineSupported);
 		ImGui::Checkbox("Mesh Shading Pipeline", &_rInfo.bMeshShadingPipelineEnabled);
 		ImGui::BeginDisabled(!_rInfo.bMeshShadingPipelineEnabled);
-		ImGui::Checkbox("Meshlet Cone Culling", &_rInfo.bMeshletConeCulling);
+		ImGui::Checkbox("Meshlet Cone Culling", &_rInfo.bMeshletConeCullingEnabled);
+		ImGui::Checkbox("Meshlet Frustum Culling", &_rInfo.bMeshletFrustumCullingEnabled);
 		ImGui::EndDisabled();
 		ImGui::EndDisabled();
 

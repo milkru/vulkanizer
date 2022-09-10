@@ -12,7 +12,8 @@ void terminateGUI();
 struct InfoGUI
 {
 	const char* deviceName = "Unknown Device";
-	double gpuTime = 0.0f;
+	double generateDrawsGpuTime = 0.0f;
+	double geometryGpuTime = 0.0f;
 	uint64_t inputAssemblyVertices = 0ull;
 	uint64_t inputAssemblyPrimitives = 0ull;
 	uint64_t vertexShaderInvocations = 0ull;
@@ -20,9 +21,12 @@ struct InfoGUI
 	uint64_t clippingPrimitives = 0ull;
 	uint64_t fragmentShaderInvocations = 0ull;
 	uint64_t computeShaderInvocations = 0ull;
+	bool bFreezeCullingEnabled = false;
 	bool bMeshShadingPipelineSupported = false;
 	bool bMeshShadingPipelineEnabled = false;
-	bool bMeshletConeCulling = false;
+	bool bMeshFrustumCullingEnabled = false;
+	bool bMeshletConeCullingEnabled = false;
+	bool bMeshletFrustumCullingEnabled = false;
 };
 
 void newFrameGUI(

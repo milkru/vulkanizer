@@ -1,0 +1,102 @@
+#version 450
+
+#extension GL_EXT_shader_8bit_storage: require
+#extension GL_EXT_shader_16bit_storage: require
+#extension GL_KHR_shader_subgroup_ballot: require
+
+#include "shader_constants.h"
+#include "shader_common.h"
+
+layout(local_size_x = kShaderGroupSizeNV) in;
+layout(local_size_y = 1) in;
+layout(local_size_z = 1) in;
+
+struct PerDrawData
+{
+	uint indexCount;
+	uint firstIndex;
+	int vertexOffset;
+
+	uint taskCount;
+	uint firstTask;
+
+	float center[3];
+	float radius;
+};
+
+struct DrawCommand
+{
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    uint vertexOffset;
+    uint firstInstance;
+    uint taskCount;
+    uint firstTask;
+};
+
+layout(binding = 0) readonly buffer PerDrawDataVector { PerDrawData perDrawDataVector[]; };
+layout(binding = 1) writeonly buffer DrawCommands { DrawCommand drawCommands[]; };
+layout(binding = 2) writeonly buffer DrawCount { uint drawCount; };
+
+layout (push_constant) uniform block
+{
+    PerFrameData perFrameData;
+};
+
+shared uint drawOffset;
+
+void main()
+{
+	uint groupThreadIndex = gl_LocalInvocationID.x;
+	uint drawIndex = gl_GlobalInvocationID.x;
+
+	if (drawIndex >= perFrameData.maxDrawCount)
+	{
+		return;
+	}
+
+	PerDrawData perDrawData = perDrawDataVector[drawIndex];
+	
+	vec3 center = (perFrameData.model * vec4(
+		perDrawData.center[0],
+		perDrawData.center[1],
+		perDrawData.center[2], 1.0)).xyz;
+	
+	bool frustumCulled = false;
+	for(int i = 0; i < 6; ++i)
+	{
+		frustumCulled = frustumCulled ||
+			dot(vec4(center, 1.0), perFrameData.frustumPlanes[i]) + perDrawData.radius < 0.0;
+	}
+	frustumCulled = frustumCulled && perFrameData.enableMeshFrustumCulling == 1;
+	
+	
+	bool visible = !frustumCulled;
+	uvec4 visibleBallot = subgroupBallot(visible);
+	
+	if (groupThreadIndex == 0)
+	{
+		uint visibleMeshCount = subgroupBallotBitCount(visibleBallot);
+		drawOffset = atomicAdd(drawCount, visibleMeshCount);
+	}
+
+	subgroupMemoryBarrierShared();
+
+	if (visible)
+	{
+		uint visibleMeshIndex = subgroupBallotExclusiveBitCount(visibleBallot);
+		uint drawCommandIndex = drawOffset + visibleMeshIndex;
+
+		DrawCommand drawCommand;
+		drawCommand.indexCount = perDrawData.indexCount;
+		drawCommand.instanceCount = 1;
+		drawCommand.firstIndex = perDrawData.firstIndex;
+		drawCommand.vertexOffset = perDrawData.vertexOffset;
+		drawCommand.firstInstance = 0;
+		drawCommand.taskCount = perDrawData.taskCount;
+		drawCommand.firstTask = perDrawData.firstIndex;
+
+		drawCommands[drawCommandIndex] = drawCommand;
+	}
+}

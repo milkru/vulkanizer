@@ -28,6 +28,9 @@ struct Mesh
 	std::vector<Meshlet> meshlets;
 	std::vector<uint32_t> meshletVertices;
 	std::vector<uint8_t> meshletTriangles;
+
+	float center[3];
+	float radius;
 };
 
 Mesh loadMesh(

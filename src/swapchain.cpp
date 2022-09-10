@@ -83,8 +83,8 @@ static VkExtent2D chooseSwapchainExtent(
 	VkExtent2D minImageExtent = surfaceCapabilities.minImageExtent;
 	VkExtent2D maxImageExtent = surfaceCapabilities.maxImageExtent;
 
-	actualExtent.width = CLAMP(actualExtent.width, minImageExtent.width, maxImageExtent.width);
-	actualExtent.height = CLAMP(actualExtent.height, minImageExtent.height, maxImageExtent.height);
+	actualExtent.width = glm::clamp(actualExtent.width, minImageExtent.width, maxImageExtent.width);
+	actualExtent.height = glm::clamp(actualExtent.height, minImageExtent.height, maxImageExtent.height);
 
 	return actualExtent;
 }
@@ -101,7 +101,7 @@ static VkSwapchainKHR createSwapchain(
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
 	VK_CALL(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_physicalDevice, _surface, &surfaceCapabilities));
 
-	uint32_t minImageCount = CLAMP(kPreferredSwapchainImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount);
+	uint32_t minImageCount = glm::clamp(kPreferredSwapchainImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount);
 
 	VkSwapchainCreateInfoKHR swapchainCreateInfo = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
 	swapchainCreateInfo.surface = _surface;

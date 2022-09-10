@@ -5,8 +5,8 @@
 #extension GL_NV_mesh_shader: require
 #extension GL_KHR_shader_subgroup_ballot: require
 
-#include "constants.h"
-#include "geometry.h"
+#include "shader_constants.h"
+#include "shader_common.h"
 
 layout(local_size_x = kShaderGroupSizeNV) in;
 
@@ -19,43 +19,51 @@ taskNV out Task
 
 layout (push_constant) uniform block
 {
-    Globals globals;
+    PerFrameData perFrameData;
 };
 
 void main()
 {
-	uint threadIndex = gl_LocalInvocationID.x;
-	uint groupIndex = gl_WorkGroupID.x;
-	uint meshletIndex = kShaderGroupSizeNV * groupIndex + threadIndex;
+	uint groupThreadIndex = gl_LocalInvocationID.x;
+	uint meshletIndex = gl_GlobalInvocationID.x;
 
-	vec3 coneApex = (globals.model * vec4(
+	vec3 coneApex = (perFrameData.model * vec4(
 		meshlets[meshletIndex].center[0],
 		meshlets[meshletIndex].center[1],
 		meshlets[meshletIndex].center[2], 1.0)).xyz;
 	
-	vec3 coneAxis = (globals.model * vec4(
+	vec3 coneAxis = (perFrameData.model * vec4(
 		int(meshlets[meshletIndex].coneAxis[0]) / 127.0,
 		int(meshlets[meshletIndex].coneAxis[1]) / 127.0,
 		int(meshlets[meshletIndex].coneAxis[2]) / 127.0, 1.0)).xyz;
 
-	vec3 cameraPosition = globals.cameraPosition;
+	vec3 cameraPosition = perFrameData.cameraPosition;
 	float coneCutoff = int(meshlets[meshletIndex].coneCutoff) / 127.0;
 	
 	bool coneCulled =
-		globals.enableConeCulling == 1 &&
+		perFrameData.enableMeshletConeCulling == 1 &&
 		dot(normalize(coneApex - cameraPosition), coneAxis) >= coneCutoff;
 
-	uvec4 coneCulledBallot = subgroupBallot(!coneCulled);
-	
-	if (!coneCulled)
+	bool frustumCulled = false;
+	for(int i = 0; i < 6; ++i)
 	{
-		uint subgroupLocalMeshletIndex = subgroupBallotExclusiveBitCount(coneCulledBallot);
+		frustumCulled = frustumCulled ||
+			dot(vec4(coneApex, 1.0), perFrameData.frustumPlanes[i]) + meshlets[meshletIndex].radius < 0.0;
+	}
+	frustumCulled = frustumCulled && perFrameData.enableMeshletFrustumCulling == 1;
+
+	bool visible = !coneCulled && !frustumCulled;
+	uvec4 visibleBallot = subgroupBallot(visible);
+	
+	if (visible)
+	{
+		uint subgroupLocalMeshletIndex = subgroupBallotExclusiveBitCount(visibleBallot);
 		outTask.meshletIndices[subgroupLocalMeshletIndex] = meshletIndex;
 	}
 	
-	if (threadIndex == 0)
+	if (groupThreadIndex == 0)
 	{
-		uint visibleMeshletCount = subgroupBallotBitCount(coneCulledBallot);
+		uint visibleMeshletCount = subgroupBallotBitCount(visibleBallot);
 		gl_TaskCountNV = visibleMeshletCount;
 	}
 }

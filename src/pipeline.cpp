@@ -18,6 +18,9 @@ static VkShaderStageFlagBits getShaderStage(SpvReflectShaderStageFlagBits _refle
 {
 	switch (_reflectShaderStage)
 	{
+	case SPV_REFLECT_SHADER_STAGE_COMPUTE_BIT:
+		return VK_SHADER_STAGE_COMPUTE_BIT;
+
 	case SPV_REFLECT_SHADER_STAGE_TASK_BIT_NV:
 		return VK_SHADER_STAGE_TASK_BIT_NV;
 

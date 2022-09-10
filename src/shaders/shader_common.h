@@ -1,5 +1,5 @@
-#ifndef GEOMETRY_H
-#define GEOMETRY_H
+#ifndef SHADER_COMMON_H
+#define SHADER_COMMON_H
 
 // A structure has a scalar alignment equal to the largest scalar alignment of any of its members.
 // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout
@@ -24,13 +24,18 @@ struct Meshlet
 	int8_t coneCutoff;
 };
 
-struct Globals
+// TODO-MILKRU: Separate PerFrameData and CullData.
+struct PerFrameData
 {
+	// TODO-MILKRU: Move model to MeshBuffer once it gets created together with bounds etc.
 	mat4 model;
-	mat4 view;
-	mat4 proj;
+	mat4 viewProjection;
+	vec4 frustumPlanes[6];
 	vec3 cameraPosition;
-	uint enableConeCulling;
+	uint maxDrawCount;
+	uint enableMeshFrustumCulling;
+	uint enableMeshletConeCulling;
+	uint enableMeshletFrustumCulling;
 };
 
-#endif // GEOMETRY_H
+#endif // SHADER_COMMON_H

@@ -6,7 +6,7 @@ message("Compiling Shaders:")
 
 set(GLSL_COMPILER "$ENV{VULKAN_SDK}/Bin/glslc.exe")
 
-file(GLOB_RECURSE GLSL_SRC_FILES "src/shaders/*.task" "src/shaders/*.mesh" "src/shaders/*.vert" "src/shaders/*.frag")
+file(GLOB_RECURSE GLSL_SRC_FILES "src/shaders/*.comp" "src/shaders/*.task" "src/shaders/*.mesh" "src/shaders/*.vert" "src/shaders/*.frag")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/shaders/")
 
 source_group("Shader Files" FILES ${GLSL_SRC_FILES})

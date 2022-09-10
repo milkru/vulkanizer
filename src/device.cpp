@@ -257,6 +257,7 @@ static VkDevice createDevice(
 	deviceFeatures12.storagePushConstant8 = VK_TRUE;
 	deviceFeatures12.shaderFloat16 = VK_TRUE;
 	deviceFeatures12.shaderInt8 = VK_TRUE;
+	deviceFeatures12.drawIndirectCount = VK_TRUE;
 
 	VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR };
 	dynamicRenderingFeatures.dynamicRendering = VK_TRUE;

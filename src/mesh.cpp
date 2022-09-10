@@ -1,6 +1,6 @@
 #include "common.h"
 #include "mesh.h"
-#include "shaders/constants.h"
+#include "shaders/shader_constants.h"
 
 #include <fast_obj.h>
 #include <meshoptimizer.h>
@@ -109,6 +109,28 @@ Mesh loadMesh(
 	Mesh mesh{};
 	mesh.indices = indices;
 	mesh.vertices.reserve(vertices.size());
+
+	{
+		// TODO-MILKRU: Is there a more conservative way of calculating bounding sphere?
+		glm::vec3 meshCenter(0.0f);
+		for (RawVertex& vertex : vertices)
+		{
+			meshCenter += glm::vec3(vertex.position[0], vertex.position[1], vertex.position[2]);
+		}
+
+		meshCenter /= float(vertices.size());
+
+		float meshRadius = 0.0f;
+		for (RawVertex& vertex : vertices)
+		{
+			meshRadius = glm::max(meshRadius, glm::distance(meshCenter, glm::vec3(vertex.position[0], vertex.position[1], vertex.position[2])));
+		}
+
+		mesh.center[0] = meshCenter.x;
+		mesh.center[1] = meshCenter.y;
+		mesh.center[2] = meshCenter.z;
+		mesh.radius = meshRadius;
+	}
 
 	for (const RawVertex& vertex : vertices)
 	{

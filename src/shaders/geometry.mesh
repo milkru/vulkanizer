@@ -5,8 +5,8 @@
 #extension GL_EXT_shader_16bit_storage: require
 #extension GL_NV_mesh_shader: require
 
-#include "constants.h"
-#include "geometry.h"
+#include "shader_constants.h"
+#include "shader_common.h"
 
 layout(local_size_x = kShaderGroupSizeNV) in;
 layout(triangles, max_vertices = kMaxVerticesPerMeshlet, max_primitives = kMaxTrianglesPerMeshlet) out;
@@ -25,7 +25,7 @@ layout(location = 0) out vec3 outColor[];
 
 layout (push_constant) uniform block
 {
-    Globals globals;
+    PerFrameData perFrameData;
 };
 
 vec3 getRandomColor(
@@ -44,7 +44,7 @@ vec3 getRandomColor(
 void main()
 {
 	uint groupIndex = gl_WorkGroupID.x;
-	uint threadIndex = gl_LocalInvocationID.x;
+	uint groupThreadIndex = gl_LocalInvocationID.x;
 	uint meshletIndex = inTask.meshletIndices[groupIndex]; 
 
 	// This allows loop unrolling, since vertexLoops is known at compile time.
@@ -55,7 +55,7 @@ void main()
 	[[unroll]]
 	for (uint loopIndex = 0; loopIndex < vertexLoops; ++loopIndex)
 	{
-		uint localVertexIndex = threadIndex + loopIndex * kShaderGroupSizeNV;
+		uint localVertexIndex = groupThreadIndex + loopIndex * kShaderGroupSizeNV;
 		localVertexIndex = min(localVertexIndex, meshlets[meshletIndex].vertexCount - 1);
 
 		uint vertexIndex = meshletVertices[meshlets[meshletIndex].vertexOffset + localVertexIndex];
@@ -80,12 +80,11 @@ void main()
 			vertices[vertexIndex].texCoord[1]);
 
 		gl_MeshVerticesNV[localVertexIndex].gl_Position =
-			globals.proj *
-			globals.view *
-			globals.model *
+			perFrameData.viewProjection *
+			perFrameData.model *
 			vec4(position, 1.0);
 
-		outColor[localVertexIndex] = color;
+		outColor[localVertexIndex] = 0.5 * normal + 0.5;
 	}
 
 	uint packedTriangleOffset = meshlets[meshletIndex].triangleOffset / 4;
@@ -97,13 +96,13 @@ void main()
 	[[unroll]]
 	for (uint loopIndex = 0; loopIndex < triangleLoops; ++loopIndex)
 	{
-		uint localTriangleIndex = threadIndex + loopIndex * kShaderGroupSizeNV;
+		uint localTriangleIndex = groupThreadIndex + loopIndex * kShaderGroupSizeNV;
 		localTriangleIndex = min(localTriangleIndex, packedTrianglesMax);
 
 		writePackedPrimitiveIndices4x8NV(4 * localTriangleIndex, meshletTriangles[packedTriangleOffset + localTriangleIndex]);
 	}
 
-	if (threadIndex == 0)
+	if (groupThreadIndex == 0)
 	{
 		gl_PrimitiveCountNV = meshlets[meshletIndex].triangleCount;
 	}

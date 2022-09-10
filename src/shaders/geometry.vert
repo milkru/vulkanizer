@@ -3,7 +3,7 @@
 #extension GL_EXT_shader_8bit_storage: require
 #extension GL_EXT_shader_16bit_storage: require
 
-#include "geometry.h"
+#include "shader_common.h"
 
 layout(binding = 0) readonly buffer Vertices { Vertex vertices[]; };
 
@@ -11,7 +11,7 @@ layout(location = 0) out vec3 outColor;
 
 layout (push_constant) uniform block
 {
-    Globals globals;
+    PerFrameData perFrameData;
 };
 
 void main()
@@ -36,9 +36,8 @@ void main()
 		vertices[gl_VertexIndex].texCoord[1]);
 
     gl_Position =
-		globals.proj *
-		globals.view *
-		globals.model *
+		perFrameData.viewProjection *
+		perFrameData.model *
 		vec4(position, 1.0);
 
     outColor = 0.5 + 0.5 * normal;

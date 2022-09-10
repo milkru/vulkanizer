@@ -20,18 +20,6 @@
 	while (0)
 #endif // VK_CALL
 
-#ifndef MIN
-#define MIN(_a, _b) (((_a) < (_b)) ? (_a) : (_b))
-#endif // MIN
-
-#ifndef MAX
-#define MAX(_a, _b) (((_b) < (_a)) ? (_a) : (_b))
-#endif // MAX
-
-#ifndef CLAMP
-#define CLAMP(_val, _min, _max) ((_val) < (_min) ? (_min) : (_val) > (_max) ? (_max) : (_val))
-#endif // CLAMP
-
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(_arr) ((int32_t)(sizeof(_arr) / sizeof(_arr[0])))
 #endif // ARRAY_SIZE
