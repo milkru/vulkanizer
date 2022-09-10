@@ -13,11 +13,12 @@ Rendering engine prototype made with `Vulkan 1.3`. Code is written using a [simp
 * Mesh optimizations using [meshoptimizer](https://github.com/zeux/meshoptimizer)
 * Single mesh rendering
 * NVidia [Mesh Shading Pipeline](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/) support, with traditional pipeline still supported
-* Meshlet cone culling
+* Meshlet cone and frustum culling
+* Mesh GPU frustum culling
 * Programmable vertex fetching with 12 byte vertices
 * Depth buffering with [reversed-Z](https://developer.nvidia.com/content/depth-precision-visualized)
 * Automatic descriptor set layout creation with [SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect)
-* Vulkan's dynamic rendering, push descriptors and descriptor update templates support
+* Vulkan's dynamic rendering, indirect draw count, push descriptors and descriptor update templates support
 * CPU profiling using [easy_profiler](https://github.com/yse/easy_profiler)
 * GPU profiling using query timestamps and pipeline statistics
 * Custom [Dear ImGui](https://github.com/ocornut/imgui) Vulkan backend with *Performance* and *Settings* windows
