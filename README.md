@@ -14,7 +14,7 @@ Rendering engine prototype made with `Vulkan 1.3`. Code is written using a [simp
 * Single mesh rendering
 * NVidia [Mesh Shading Pipeline](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/) support, with traditional pipeline still supported
 * Meshlet cone and frustum culling
-* Mesh GPU frustum culling
+* Mesh GPU frustum culling with draw call compaction
 * Programmable vertex fetching with 12 byte vertices
 * Depth buffering with [reversed-Z](https://developer.nvidia.com/content/depth-precision-visualized)
 * Automatic descriptor set layout creation with [SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect)
