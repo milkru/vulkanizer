@@ -3,25 +3,27 @@ Rendering engine prototype made with `Vulkan 1.3`. Code is written using a [simp
 
 ## Screenshots
 ![Demo](https://github.com/milkru/data_resources/blob/main/vulkanizer/re_buddha.PNG)
+
 ![Demo](https://github.com/milkru/data_resources/blob/main/vulkanizer/cone.PNG)
+
 ![Demo](https://github.com/milkru/data_resources/blob/main/vulkanizer/culled_bunny.PNG)
 
 ## Features
-* Vulkan meta loading using [volk](https://github.com/zeux/volk)
-* Window handling using [glfw](https://github.com/glfw/glfw)
-* Mesh loading using [fast_obj](https://github.com/thisistherk/fast_obj)
-* Mesh optimizations using [meshoptimizer](https://github.com/zeux/meshoptimizer)
+* Vulkan meta loading with [volk](https://github.com/zeux/volk)
+* Window handling with [glfw](https://github.com/glfw/glfw)
+* Mesh loading with [fast_obj](https://github.com/thisistherk/fast_obj)
+* Mesh optimizations with [meshoptimizer](https://github.com/zeux/meshoptimizer)
+* CPU profiling with [easy_profiler](https://github.com/yse/easy_profiler)
+* GPU profiling with query timestamps and pipeline statistics
+* Custom [Dear ImGui](https://github.com/ocornut/imgui) Vulkan backend with *Performance* and *Settings* windows
 * Single mesh rendering
+* Programmable vertex fetching with 12 byte vertices
+* Mesh GPU frustum culling with draw call compaction
 * NVidia [Mesh Shading Pipeline](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/) support, with traditional pipeline still supported
 * Meshlet cone and frustum culling
-* Mesh GPU frustum culling with draw call compaction
-* Programmable vertex fetching with 12 byte vertices
 * Depth buffering with [reversed-Z](https://developer.nvidia.com/content/depth-precision-visualized)
 * Automatic descriptor set layout creation with [SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect)
 * Vulkan's dynamic rendering, indirect draw count, push descriptors and descriptor update templates support
-* CPU profiling using [easy_profiler](https://github.com/yse/easy_profiler)
-* GPU profiling using query timestamps and pipeline statistics
-* Custom [Dear ImGui](https://github.com/ocornut/imgui) Vulkan backend with *Performance* and *Settings* windows
 * In-flight frames
 
 ## Installation
