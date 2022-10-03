@@ -1,6 +1,7 @@
 #include "common.h"
 #include "camera.h"
 #include "utils.h"
+#include "window.h"
 
 static glm::vec2 getLookDirection(
 	GLFWwindow* _pWindow)
@@ -28,6 +29,7 @@ static glm::vec2 getLookDirection(
 	{
 		direction += right;
 	}
+
 
 	if (glm::length(direction) != 0.0f)
 	{
@@ -87,6 +89,12 @@ void updateCamera(
 	float _deltaTime,
 	Camera& _rCamera)
 {
+	int32_t framebufferWidth;
+	int32_t framebufferHeight;
+	glfwGetFramebufferSize(_pWindow, &framebufferWidth, &framebufferHeight);
+
+	_rCamera.aspect = float(framebufferWidth) / float(framebufferHeight);
+
 	glm::vec2 lookDirection = getLookDirection(_pWindow);
 	_rCamera.yaw += lookDirection.y * _deltaTime * _rCamera.sensitivity;
 	_rCamera.pitch += lookDirection.x * _deltaTime * _rCamera.sensitivity;

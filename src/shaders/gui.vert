@@ -1,10 +1,18 @@
 #version 450
 
-layout (location = 0) in vec2 inPos;
-layout (location = 1) in vec2 inUV;
-layout (location = 2) in vec4 inColor;
+#extension GL_EXT_shader_8bit_storage: require
 
-layout (push_constant) uniform PushConstants {
+struct Vertex
+{
+	float position[2];
+	float uv[2];
+	uint8_t color[4];
+};
+
+layout(binding = 0) readonly buffer Vertices { Vertex vertices[]; };
+
+layout (push_constant) uniform PushConstants
+{
 	vec2 scale;
 	vec2 translate;
 } pushConstants;
@@ -14,7 +22,18 @@ layout (location = 1) out vec4 outColor;
 
 void main() 
 {
-	outUV = inUV;
-	outColor = inColor;
-	gl_Position = vec4(inPos * pushConstants.scale + pushConstants.translate, 0.0, 1.0);
+	outUV = vec2(
+		vertices[gl_VertexIndex].uv[0],
+		vertices[gl_VertexIndex].uv[1]);
+
+	outColor = vec4(
+		uint(vertices[gl_VertexIndex].color[0]),
+		uint(vertices[gl_VertexIndex].color[1]),
+		uint(vertices[gl_VertexIndex].color[2]),
+		uint(vertices[gl_VertexIndex].color[3])) / 256.0;
+
+	gl_Position = vec4(vec2(
+			vertices[gl_VertexIndex].position[0],
+			vertices[gl_VertexIndex].position[1]) *
+		pushConstants.scale + pushConstants.translate, 0.0, 1.0);
 }

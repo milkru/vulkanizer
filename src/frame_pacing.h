@@ -1,12 +1,6 @@
 #pragma once
 
-const uint32_t kMaxFramesInFlightCount = 2;
-
-VkSemaphore createSemaphore(
-	VkDevice _device);
-
-VkFence createFence(
-	VkDevice _device);
+const uint32_t kMaxFramesInFlightCount = 2u;
 
 struct FramePacingState
 {
@@ -20,4 +14,4 @@ FramePacingState createFramePacingState(
 
 void destroyFramePacingState(
 	Device _device,
-	FramePacingState _framePacing);
+	FramePacingState& _rFramePacingState);

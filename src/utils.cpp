@@ -28,7 +28,14 @@ glm::mat4 getInfinitePerspectiveMatrix(
 	float f = 1.0f / tanf(_fov / 2.0f);
 	return glm::mat4(
 		f / _aspect, 0.0f, 0.0f, 0.0f,
-		0.0f, f, 0.0f, 0.0f,
+		0.0f, -f, 0.0f, 0.0f,
 		0.0f, 0.0f, 0.0f, -1.0f,
 		0.0f, 0.0f, _near, 0.0f);
+}
+
+uint32_t divideRoundingUp(
+	uint32_t _dividend,
+	uint32_t _divisor)
+{
+	return (_dividend + _divisor - 1) / _divisor;
 }

@@ -1,8 +1,8 @@
 #include "common.h"
 #include "device.h"
-#include "sync.h"
+#include "frame_pacing.h"
 
-VkSemaphore createSemaphore(
+static VkSemaphore createSemaphore(
 	VkDevice _device)
 {
 	VkSemaphoreCreateInfo semaphoreCreateInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
@@ -13,7 +13,7 @@ VkSemaphore createSemaphore(
 	return semaphore;
 }
 
-VkFence createFence(
+static VkFence createFence(
 	VkDevice _device)
 {
 	VkFenceCreateInfo fenceCreateInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
@@ -28,19 +28,19 @@ VkFence createFence(
 FramePacingState createFramePacingState(
 	Device _device)
 {
-	FramePacingState framePacing{};
-	framePacing.imageAvailableSemaphore = createSemaphore(_device.deviceVk);
-	framePacing.renderFinishedSemaphore = createSemaphore(_device.deviceVk);
-	framePacing.inFlightFence = createFence(_device.deviceVk);
-
-	return framePacing;
+	return {
+		.imageAvailableSemaphore = createSemaphore(_device.device),
+		.renderFinishedSemaphore = createSemaphore(_device.device),
+		.inFlightFence = createFence(_device.device) };
 }
 
 void destroyFramePacingState(
 	Device _device,
-	FramePacingState _framePacing)
+	FramePacingState& _rFramePacingState)
 {
-	vkDestroySemaphore(_device.deviceVk, _framePacing.renderFinishedSemaphore, nullptr);
-	vkDestroySemaphore(_device.deviceVk, _framePacing.imageAvailableSemaphore, nullptr);
-	vkDestroyFence(_device.deviceVk, _framePacing.inFlightFence, nullptr);
+	vkDestroySemaphore(_device.device, _rFramePacingState.renderFinishedSemaphore, nullptr);
+	vkDestroySemaphore(_device.device, _rFramePacingState.imageAvailableSemaphore, nullptr);
+	vkDestroyFence(_device.device, _rFramePacingState.inFlightFence, nullptr);
+
+	_rFramePacingState = {};
 }

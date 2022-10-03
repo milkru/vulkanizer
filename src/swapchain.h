@@ -1,19 +1,32 @@
 #pragma once
 
+struct SwapchainDesc
+{
+	bool bEnableVSync = true;
+	uint32_t preferredSwapchainImageCount = 2;
+	VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE;
+};
+
 struct Swapchain
 {
-	VkSwapchainKHR swapchainVk = VK_NULL_HANDLE;
-	VkFormat imageFormat = VK_FORMAT_UNDEFINED;
+	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	VkExtent2D extent{};
-	std::vector<VkImage> images;
-	std::vector<VkImageView> imageViews;
+	VkFormat format = VK_FORMAT_UNDEFINED;
+	std::vector<Texture> textures{};
 };
 
 Swapchain createSwapchain(
 	GLFWwindow* _pWindow,
 	Device _device,
-	VkSwapchainKHR _oldSwapchain = VK_NULL_HANDLE);
+	SwapchainDesc _desc);
 
 void destroySwapchain(
 	Device _device,
 	Swapchain& _rSwapchain);
+
+void submitAndPresent(
+	VkCommandBuffer _commandBuffer,
+	Device _device,
+	Swapchain _swapchain,
+	uint32_t _imageIndex,
+	FramePacingState _framePacingState);

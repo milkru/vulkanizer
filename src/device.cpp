@@ -1,16 +1,12 @@
 #include "common.h"
 #include "device.h"
+#include "window.h"
 
 #include <stdio.h>
 #include <string.h>
 
-#ifdef DEBUG_
-const bool kbEnableValidationLayers = true;
-#else
-const bool kbEnableValidationLayers = false;
-#endif
-
-static VkInstance createInstance()
+static VkInstance createInstance(
+	bool _bEnableValidationLayers)
 {
 	const char* validationLayers[] =
 	{
@@ -26,8 +22,9 @@ static VkInstance createInstance()
 		"VK_KHR_xcb_surface",
 #endif
 #ifdef DEBUG_
-		VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #endif
+		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
 	};
 
 	VkApplicationInfo applicationInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
@@ -40,7 +37,7 @@ static VkInstance createInstance()
 	VkInstanceCreateInfo instanceCreateInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	instanceCreateInfo.pApplicationInfo = &applicationInfo;
 
-	if (kbEnableValidationLayers)
+	if (_bEnableValidationLayers)
 	{
 		instanceCreateInfo.enabledLayerCount = ARRAY_SIZE(validationLayers);
 		instanceCreateInfo.ppEnabledLayerNames = validationLayers;
@@ -70,9 +67,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(
 }
 
 static VkDebugUtilsMessengerEXT createDebugMessenger(
-	VkInstance _instance)
+	VkInstance _instance,
+	bool _bEnableValidationLayers)
 {
-	if (!kbEnableValidationLayers)
+	if (!_bEnableValidationLayers)
 	{
 		return VK_NULL_HANDLE;
 	}
@@ -94,8 +92,8 @@ static VkDebugUtilsMessengerEXT createDebugMessenger(
 }
 
 static VkSurfaceKHR createSurface(
-	VkInstance _instance,
-	GLFWwindow* _pWindow)
+	GLFWwindow* _pWindow,
+	VkInstance _instance)
 {
 	VkSurfaceKHR surface;
 	VK_CALL(glfwCreateWindowSurface(_instance, _pWindow, nullptr, &surface));
@@ -127,7 +125,8 @@ static const char* kRequiredDeviceExtensions[] =
 {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
-	VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
+	VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+	VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME
 };
 
 static bool isDeviceExtensionAvailable(
@@ -230,10 +229,10 @@ static bool isMeshShadingPipelineSupported(
 static VkDevice createDevice(
 	VkPhysicalDevice _physicalDevice,
 	uint32_t _queueFamilyIndex,
-	bool _bMeshShadingSupported)
+	bool _bMeshShadingAllowed)
 {
 	std::vector<const char*> deviceExtensions(kRequiredDeviceExtensions, std::end(kRequiredDeviceExtensions));
-	if (_bMeshShadingSupported)
+	if (_bMeshShadingAllowed)
 	{
 		deviceExtensions.push_back(VK_NV_MESH_SHADER_EXTENSION_NAME);
 	}
@@ -250,6 +249,7 @@ static VkDevice createDevice(
 
 	VkPhysicalDeviceVulkan11Features deviceFeatures11 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	deviceFeatures11.storageBuffer16BitAccess = VK_TRUE;
+	deviceFeatures11.shaderDrawParameters = VK_TRUE;
 
 	VkPhysicalDeviceVulkan12Features deviceFeatures12 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
 	deviceFeatures12.storageBuffer8BitAccess = VK_TRUE;
@@ -277,7 +277,7 @@ static VkDevice createDevice(
 	deviceFeatures11.pNext = &deviceFeatures12;
 	deviceFeatures12.pNext = &dynamicRenderingFeatures;
 
-	if (_bMeshShadingSupported)
+	if (_bMeshShadingAllowed)
 	{
 		dynamicRenderingFeatures.pNext = &meshShaderFeatures;
 	}
@@ -286,6 +286,54 @@ static VkDevice createDevice(
 	VK_CALL(vkCreateDevice(_physicalDevice, &deviceCreateInfo, nullptr, &device));
 
 	return device;
+}
+
+static VmaAllocator createAllocator(
+	VkInstance _instance,
+	VkPhysicalDevice _physicalDevice,
+	VkDevice _device)
+{
+	VmaVulkanFunctions volkFunctions =
+	{
+		vkGetInstanceProcAddr,
+		vkGetDeviceProcAddr,
+		vkGetPhysicalDeviceProperties,
+		vkGetPhysicalDeviceMemoryProperties,
+		vkAllocateMemory,
+		vkFreeMemory,
+		vkMapMemory,
+		vkUnmapMemory,
+		vkFlushMappedMemoryRanges,
+		vkInvalidateMappedMemoryRanges,
+		vkBindBufferMemory,
+		vkBindImageMemory,
+		vkGetBufferMemoryRequirements,
+		vkGetImageMemoryRequirements,
+		vkCreateBuffer,
+		vkDestroyBuffer,
+		vkCreateImage,
+		vkDestroyImage,
+		vkCmdCopyBuffer,
+		vkGetBufferMemoryRequirements2KHR,
+		vkGetImageMemoryRequirements2KHR,
+		vkBindBufferMemory2KHR,
+		vkBindImageMemory2KHR,
+		vkGetPhysicalDeviceMemoryProperties2KHR,
+		vkGetDeviceBufferMemoryRequirements,
+		vkGetDeviceImageMemoryRequirements,
+	};
+
+	VmaAllocatorCreateInfo allocatorCreateInfo{};
+	allocatorCreateInfo.vulkanApiVersion = volkGetInstanceVersion();
+	allocatorCreateInfo.instance = _instance;
+	allocatorCreateInfo.physicalDevice = _physicalDevice;
+	allocatorCreateInfo.device = _device;
+	allocatorCreateInfo.pVulkanFunctions = &volkFunctions;
+
+	VmaAllocator allocator;
+	VK_CALL(vmaCreateAllocator(&allocatorCreateInfo, &allocator));
+
+	return allocator;
 }
 
 static VkCommandPool createCommandPool(
@@ -303,15 +351,16 @@ static VkCommandPool createCommandPool(
 }
 
 Device createDevice(
-	GLFWwindow* _pWindow)
+	GLFWwindow* _pWindow,
+	DeviceDesc _desc)
 {
 	VK_CALL(volkInitialize());
 
 	Device device{};
 
-	device.instance = createInstance();
-	device.debugMessenger = createDebugMessenger(device.instance);
-	device.surface = createSurface(device.instance, _pWindow);
+	device.instance = createInstance(_desc.bEnableValidationLayers);
+	device.debugMessenger = createDebugMessenger(device.instance, _desc.bEnableValidationLayers);
+	device.surface = createSurface(_pWindow, device.instance);
 	
 	device.physicalDevice = tryPickPhysicalDevice(device.instance, device.surface);
 	assert(device.physicalDevice != VK_NULL_HANDLE);
@@ -319,21 +368,26 @@ Device createDevice(
 	device.graphicsQueue.index = tryGetGraphicsQueueFamilyIndex(device.physicalDevice);
 	assert(device.graphicsQueue.index != ~0u);
 
-	device.bMeshShadingPipelineSupported = isMeshShadingPipelineSupported(device.physicalDevice);
-	device.deviceVk = createDevice(device.physicalDevice, device.graphicsQueue.index, device.bMeshShadingPipelineSupported);
+	device.bMeshShadingPipelineAllowed = _desc.bEnableMeshShadingPipeline && isMeshShadingPipelineSupported(device.physicalDevice);
+	device.device = createDevice(device.physicalDevice, device.graphicsQueue.index, device.bMeshShadingPipelineAllowed);
 
-	vkGetDeviceQueue(device.deviceVk, device.graphicsQueue.index, 0, &device.graphicsQueue.queueVk);
+	vkGetDeviceQueue(device.device, device.graphicsQueue.index, 0, &device.graphicsQueue.queue);
 
-	device.commandPool = createCommandPool(device.deviceVk, device.graphicsQueue.index);
+	device.allocator = createAllocator(device.instance, device.physicalDevice, device.device);
+
+	device.commandPool = createCommandPool(device.device, device.graphicsQueue.index);
 
 	return device;
 }
 
-void destroyDevice(Device& _rDevice)
+void destroyDevice(
+	Device& _rDevice)
 {
-	vkDestroyCommandPool(_rDevice.deviceVk, _rDevice.commandPool, nullptr);
+	vkDestroyCommandPool(_rDevice.device, _rDevice.commandPool, nullptr);
 
-	vkDestroyDevice(_rDevice.deviceVk, nullptr);
+	vmaDestroyAllocator(_rDevice.allocator);
+
+	vkDestroyDevice(_rDevice.device, nullptr);
 
 	if (_rDevice.debugMessenger != VK_NULL_HANDLE)
 	{
@@ -346,25 +400,6 @@ void destroyDevice(Device& _rDevice)
 	_rDevice = {};
 }
 
-uint32_t tryFindMemoryType(
-	Device _device,
-	uint32_t _typeFilter,
-	VkMemoryPropertyFlags _memoryFlags)
-{
-	VkPhysicalDeviceMemoryProperties memoryProperties;
-	vkGetPhysicalDeviceMemoryProperties(_device.physicalDevice, &memoryProperties);
-
-	for (uint32_t memoryTypeIndex = 0; memoryTypeIndex < memoryProperties.memoryTypeCount; ++memoryTypeIndex)
-	{
-		if ((_typeFilter & (1 << memoryTypeIndex)) && (memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags & _memoryFlags) == _memoryFlags)
-		{
-			return memoryTypeIndex;
-		}
-	}
-
-	return ~0u;
-}
-
 VkCommandBuffer createCommandBuffer(
 	Device _device)
 {
@@ -374,7 +409,32 @@ VkCommandBuffer createCommandBuffer(
 	allocateInfo.commandBufferCount = 1;
 
 	VkCommandBuffer commandBuffer;
-	VK_CALL(vkAllocateCommandBuffers(_device.deviceVk, &allocateInfo, &commandBuffer));
+	VK_CALL(vkAllocateCommandBuffers(_device.device, &allocateInfo, &commandBuffer));
 
 	return commandBuffer;
+}
+
+void immediateSubmit(
+	Device _device,
+	LAMBDA(VkCommandBuffer) _callback)
+{
+	VkCommandBuffer commandBuffer = createCommandBuffer(_device);
+
+	VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	VK_CALL(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+
+	_callback(commandBuffer);
+
+	VK_CALL(vkEndCommandBuffer(commandBuffer));
+
+	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+
+	VK_CALL(vkQueueSubmit(_device.graphicsQueue.queue, 1, &submitInfo, VK_NULL_HANDLE));
+	VK_CALL(vkQueueWaitIdle(_device.graphicsQueue.queue));
+
+	vkFreeCommandBuffers(_device.device, _device.commandPool, 1, &commandBuffer);
 }

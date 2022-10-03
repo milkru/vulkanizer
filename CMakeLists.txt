@@ -24,7 +24,7 @@ file(GLOB_RECURSE SRC_FILES "src/*.h" "src/*.cpp")
 include_directories(src)
 add_executable(${PROJECT_NAME} ${SRC_FILES} ${GLSL_SRC_FILES})
 
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
@@ -32,6 +32,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG_>)
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:RELEASE_>)
 
 if (MSVC)
+	target_compile_options(${PROJECT_NAME} PRIVATE /wd26812)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders/"
@@ -132,3 +133,15 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${FAST_OBJ_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE fast_obj_lib)
 
 set_property(TARGET fast_obj_lib PROPERTY FOLDER "3rdparty")
+
+message("Adding VulkanMemoryAllocator:")
+
+set(VMA_STATIC_VULKAN_FUNCTIONS OFF CACHE BOOL "")
+set(VMA_DYNAMIC_VULKAN_FUNCTIONS OFF CACHE BOOL "")
+set(VMA_DIR 3rdparty/VulkanMemoryAllocator)
+
+add_subdirectory(${VMA_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${VMA_DIR}/include)
+target_link_libraries(${PROJECT_NAME} PRIVATE VulkanMemoryAllocator)
+
+set_property(TARGET VulkanMemoryAllocator PROPERTY FOLDER "3rdparty")

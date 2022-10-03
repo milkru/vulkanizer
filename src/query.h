@@ -1,10 +1,16 @@
 #pragma once
 
+struct QueryPoolDesc
+{
+	VkQueryType type = VK_QUERY_TYPE_MAX_ENUM;
+	uint32_t queryCount = 0u;
+};
+
 enum class QueryPoolStatus : uint8_t
 {
 	Reset,
 	Issued,
-	Available
+	Available,
 };
 
 struct QueryPool
@@ -14,13 +20,12 @@ struct QueryPool
 	QueryPoolStatus status = QueryPoolStatus::Available;
 	uint32_t queryCapacity = 0;
 	uint32_t allocatedQueries = 0;
-	std::vector<uint64_t> queryResults;
+	std::vector<uint64_t> queryResults{};
 };
 
 QueryPool createQueryPool(
 	Device _device,
-	VkQueryType _type,
-	uint32_t _queryCount);
+	QueryPoolDesc _desc);
 
 void destroyQueryPool(
 	Device _device,
@@ -104,7 +109,7 @@ enum class StatType : uint8_t
 	FragmentShaderInvocations,
 	ComputeShaderInvocations,
 
-	COUNT
+	Count
 };
 
 bool tryGetBlockResult(

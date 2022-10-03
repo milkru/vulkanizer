@@ -1,380 +1,268 @@
 #include "common.h"
+#include "window.h"
 #include "camera.h"
 #include "device.h"
+#include "buffer.h"
+#include "texture.h"
+#include "shader.h"
+#include "frame_pacing.h"
 #include "swapchain.h"
 #include "pipeline.h"
-#include "resources.h"
-#include "sync.h"
-#include "mesh.h"
-#include "gui.h"
-#include "utils.h"
+#include "pass.h"
 #include "query.h"
 #include "shaders/shader_constants.h"
+#include "geometry.h"
+#include "gui.h"
+#include "utils.h"
 
 #include <easy/profiler.h>
 
 #include <string.h>
 #include <chrono>
 
-const uint32_t kWindowWidth = 1280;
-const uint32_t kWindowHeight = 720;
+#ifdef DEBUG_
+const bool kbEnableValidationLayers = true;
+#else
+const bool kbEnableValidationLayers = false;
+#endif
 
-struct PerDrawData
+const bool kbEnableMeshShadingPipeline = true;
+
+const uint32_t kPreferredSwapchainImageCount = 2u;
+const bool kbEnableVSync = false;
+
+const uint32_t kWindowWidth = 1280u;
+const uint32_t kWindowHeight = 720u;
+
+const uint32_t kMaxDrawCount = 100000u;
+const float kSpawnCubeSize = 100.0f;
+
+struct alignas(16) PerDrawData
 {
-	uint32_t    indexCount;
-	uint32_t    firstIndex;
-	int32_t     vertexOffset;
-
-	uint32_t    taskCount;
-	uint32_t    firstTask;
-
-	float center[3];
-	float radius;
+	glm::mat4 model{};
+	uint32_t meshIndex = 0u;
 };
 
 struct DrawCommand
 {
-	uint32_t indexCount;
-	uint32_t instanceCount;
-	uint32_t firstIndex;
-	uint32_t vertexOffset;
-	uint32_t firstInstance;
-	uint32_t taskCount;
-	uint32_t firstTask;
+	uint32_t indexCount = 0u;
+	uint32_t instanceCount = 0u;
+	uint32_t firstIndex = 0u;
+	uint32_t vertexOffset = 0u;
+	uint32_t firstInstance = 0u;
+
+	uint32_t taskCount = 0u;
+	uint32_t firstTask = 0u;
+
+	uint32_t drawIndex = 0u;
+	uint32_t lodIndex = 0u;
 };
 
-static GLFWwindow* createWindow()
+struct DrawBuffers
 {
-	glfwSetErrorCallback(
-		[](int32_t _error, const char* _description)
-		{
-			fprintf(stderr, "GLFW error: %s\n", _description);
-		}
-	);
+	Buffer drawsBuffer{};
+	Buffer drawCommandsBuffer{};
+	Buffer drawCountBuffer{};
+};
 
-	if (!glfwInit())
-	{
-		assert(!"GLFW not initialized properly!");
-	}
-
-	if (!glfwVulkanSupported())
-	{
-		assert(!"Vulkan is not supported!");
-	}
-
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-	GLFWwindow* pWindow = glfwCreateWindow(kWindowWidth, kWindowHeight, "vulkanizer", nullptr, nullptr);
-	if (pWindow == nullptr)
-	{
-		glfwTerminate();
-		assert(!"Window creation failed!");
-	}
-
-	return pWindow;
-}
-
-static VkPipeline createComputePipeline(
-	VkDevice _device,
-	VkPipelineLayout _pipelineLayout,
-	Shader _computeShader)
-{
-	VkPipelineShaderStageCreateInfo shaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-	shaderStageCreateInfo.stage = _computeShader.stage;
-	shaderStageCreateInfo.module = _computeShader.module;
-	shaderStageCreateInfo.pName = _computeShader.entry.c_str();
-
-	VkComputePipelineCreateInfo computePipelineCreateInfo = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
-	computePipelineCreateInfo.stage = shaderStageCreateInfo;
-	computePipelineCreateInfo.layout = _pipelineLayout;
-
-	VkPipeline computePipeline;
-	VK_CALL(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &computePipeline));
-
-	return computePipeline;
-}
-
-static VkPipeline createGraphicsPipeline(
-	VkDevice _device,
-	VkPipelineLayout _pipelineLayout,
-	std::initializer_list<VkFormat> _colorFormats,
-	VkFormat _depthFormat,
-	std::initializer_list<Shader> _shaders)
-{
-	std::vector<VkPipelineShaderStageCreateInfo> shaderStageCreateInfos;
-	shaderStageCreateInfos.reserve(_shaders.size());
-
-	for (const Shader& shader : _shaders)
-	{
-		VkPipelineShaderStageCreateInfo shaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-		shaderStageCreateInfo.stage = shader.stage;
-		shaderStageCreateInfo.module = shader.module;
-		shaderStageCreateInfo.pName = shader.entry.c_str();
-
-		shaderStageCreateInfos.push_back(shaderStageCreateInfo);
-	}
-
-	VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
-
-	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
-	inputAssemblyStateCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	inputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE;
-
-	VkPipelineViewportStateCreateInfo viewportStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
-	viewportStateCreateInfo.viewportCount = 1;
-	viewportStateCreateInfo.scissorCount = 1;
-
-	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
-	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;
-	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
-	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterizationStateCreateInfo.lineWidth = 1.0f;
-	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE;
-
-	VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
-	multisampleStateCreateInfo.sampleShadingEnable = VK_FALSE;
-	multisampleStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-	depthStencilStateCreateInfo.depthTestEnable = VK_TRUE;
-	depthStencilStateCreateInfo.depthWriteEnable = VK_TRUE;
-	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_GREATER;
-	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
-	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
-
-	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-	colorBlendAttachment.blendEnable = VK_FALSE;
-
-	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
-	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
-	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
-	colorBlendStateCreateInfo.attachmentCount = 1;
-	colorBlendStateCreateInfo.pAttachments = &colorBlendAttachment;
-	colorBlendStateCreateInfo.blendConstants[0] = 0.0f;
-	colorBlendStateCreateInfo.blendConstants[1] = 0.0f;
-	colorBlendStateCreateInfo.blendConstants[2] = 0.0f;
-	colorBlendStateCreateInfo.blendConstants[3] = 0.0f;
-
-	VkDynamicState dynamicStates[] =
-	{
-		VK_DYNAMIC_STATE_VIEWPORT,
-		VK_DYNAMIC_STATE_SCISSOR
-	};
-
-	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-	dynamicStateCreateInfo.dynamicStateCount = ARRAY_SIZE(dynamicStates);
-	dynamicStateCreateInfo.pDynamicStates = dynamicStates;
-
-	VkPipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR };
-	pipelineRenderingCreateInfo.colorAttachmentCount = uint32_t(_colorFormats.size());
-	pipelineRenderingCreateInfo.pColorAttachmentFormats = _colorFormats.begin();
-	pipelineRenderingCreateInfo.depthAttachmentFormat = _depthFormat;
-
-	VkGraphicsPipelineCreateInfo pipelineCreateInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-	pipelineCreateInfo.stageCount = uint32_t(shaderStageCreateInfos.size());
-	pipelineCreateInfo.pStages = shaderStageCreateInfos.data();
-	pipelineCreateInfo.pVertexInputState = &vertexInputStateCreateInfo;
-	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyStateCreateInfo;
-	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
-	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
-	pipelineCreateInfo.pMultisampleState = &multisampleStateCreateInfo;
-	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
-	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
-	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
-	pipelineCreateInfo.layout = _pipelineLayout;
-	pipelineCreateInfo.renderPass = VK_NULL_HANDLE;
-	pipelineCreateInfo.pNext = &pipelineRenderingCreateInfo;
-	pipelineCreateInfo.subpass = 0;
-	pipelineCreateInfo.basePipelineIndex = -1;
-	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
-
-	VkPipeline graphicsPipeline;
-	VK_CALL(vkCreateGraphicsPipelines(_device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &graphicsPipeline));
-
-	return graphicsPipeline;
-}
-
-int32_t main(int32_t argc, const char** argv)
+int32_t main(
+	int32_t _argc,
+	const char** _argv)
 {
 	EASY_MAIN_THREAD;
 	EASY_PROFILER_ENABLE;
 
-	if (argc != 2)
+	if (_argc <= 1)
 	{
-		printf("Mesh path is required as a command line argument.\n");
+		printf("Provide mesh paths as command arguments.\n");
 		return 1;
 	}
 
-	GLFWwindow* pWindow = createWindow();
+	GLFWwindow* pWindow = createWindow({
+		.width = kWindowWidth,
+		.height = kWindowHeight,
+		.title = "vulkanizer" });
 
-	Device device = createDevice(pWindow);
-	Swapchain swapchain = createSwapchain(pWindow, device);
+	Device device = createDevice(pWindow, {
+		.bEnableValidationLayers = kbEnableValidationLayers,
+		.bEnableMeshShadingPipeline = kbEnableMeshShadingPipeline });
 
-	Camera camera = {};
-	camera.fov = 45.0f;
-	camera.aspect = float(swapchain.extent.width) / float(swapchain.extent.height);
-	camera.near = 0.01f;
-	camera.moveSpeed = 2.0f;
-	camera.sensitivity = 55.0f;
-	camera.pitch = 0.0f;
-	camera.yaw = 90.0f;
-	camera.position = glm::vec3(0.0f, 0.0f, -2.0f);
+	Swapchain swapchain = createSwapchain(pWindow, device, {
+		.bEnableVSync = kbEnableVSync,
+		.preferredSwapchainImageCount = kPreferredSwapchainImageCount });
 
-	Image depthImage = createImage(device, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		swapchain.extent.width, swapchain.extent.height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+	Camera camera = {
+		.fov = 45.0f,
+		.aspect = float(swapchain.extent.width) / float(swapchain.extent.height),
+		.near = 0.01f,
+		.moveSpeed = 2.0f,
+		.sensitivity = 55.0f,
+		.pitch = 0.0f,
+		.yaw = 90.0f,
+		.position = glm::vec3(0.0f) };
 
-	struct
-	{
-		glm::mat4 model;
-		glm::mat4 viewProjection;
-		glm::vec4 frustumPlanes[6];
-		glm::vec3 cameraPosition;
-		uint32_t maxDrawCount;
-		uint32_t enableMeshFrustumCulling;
-		uint32_t enableMeshletConeCulling;
-		uint32_t enableMeshletFrustumCulling;
-	} perFrameData;
+	Texture depthTexture = createTexture(device, {
+		.width = swapchain.extent.width,
+		.height = swapchain.extent.height,
+		.format = VK_FORMAT_D32_SFLOAT,
+		.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+		.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL });
 
-	Shader generateDrawsShader = createShader(device, "shaders/generate_draws.comp.spv");
+	Shader generateDrawsShader = createShader(device, {
+		.pPath = "shaders/generate_draws.comp.spv",
+		.pEntry = "main" });
 
-	VkPushConstantRange generateDrawsPushConstantRange{};
-	generateDrawsPushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-	generateDrawsPushConstantRange.offset = 0;
-	generateDrawsPushConstantRange.size = sizeof(perFrameData);
+	Shader taskShader = device.bMeshShadingPipelineAllowed ?
+		createShader(device, {
+			.pPath = "shaders/geometry.task.spv",
+			.pEntry = "main" }) : Shader();
 
-	VkDescriptorSetLayout generateDrawsDescriptorSetLayout =
-		createDescriptorSetLayout(device.deviceVk, { generateDrawsShader });
+	Shader meshShader = device.bMeshShadingPipelineAllowed ?
+		createShader(device, {
+			.pPath = "shaders/geometry.mesh.spv",
+			.pEntry = "main" }) : Shader();
 
-	VkPipelineLayout generateDrawsPipelineLayout =
-		createPipelineLayout(device.deviceVk, { generateDrawsDescriptorSetLayout }, { generateDrawsPushConstantRange });
+	Shader vertShader = createShader(device, {
+		.pPath = "shaders/geometry.vert.spv",
+		.pEntry = "main" });
 
-	VkDescriptorUpdateTemplate generateDrawsDescriptorUpdateTemplate =
-		createDescriptorUpdateTemplate(device.deviceVk, generateDrawsDescriptorSetLayout, generateDrawsPipelineLayout,
-			VK_PIPELINE_BIND_POINT_COMPUTE, { generateDrawsShader });
+	Shader fragShader = createShader(device, {
+		.pPath = "shaders/color.frag.spv",
+		.pEntry = "main" });
 
-	VkPipeline generateDrawsPipeline = createComputePipeline(device.deviceVk, generateDrawsPipelineLayout, generateDrawsShader);
+	Pipeline generateDrawsPipeline = createComputePipeline(device, generateDrawsShader);
 
-	Shader taskShader = device.bMeshShadingPipelineSupported ? createShader(device, "shaders/geometry.task.spv") : Shader();
-	Shader meshShader = device.bMeshShadingPipelineSupported ? createShader(device, "shaders/geometry.mesh.spv") : Shader();
+	Pipeline geometryPipeline = createGraphicsPipeline(device, {
+		.shaders = { vertShader, fragShader },
+		.attachmentLayout = {
+			.colorAttachmentStates = { {
+				.format = swapchain.format,
+				.blendEnable = true } },
+			.depthStencilFormat = { depthTexture.format }},
+		.rasterizationState = {
+			.cullMode = VK_CULL_MODE_BACK_BIT,
+			.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE },
+		.depthStencilState = {
+			.depthTestEnable = true,
+			.depthWriteEnable = true,
+			.depthCompareOp = VK_COMPARE_OP_GREATER } });
 
-	Shader vertShader = createShader(device, "shaders/geometry.vert.spv");
-	Shader fragShader = createShader(device, "shaders/color.frag.spv");
+	Pipeline geometryMeshletPipeline = device.bMeshShadingPipelineAllowed ?
+		createGraphicsPipeline(device, {
+			.shaders = { taskShader, meshShader, fragShader },
+			.attachmentLayout = {
+				.colorAttachmentStates = { {
+					.format = swapchain.format,
+					.blendEnable = true } },
+				.depthStencilFormat = { depthTexture.format }},
+			.rasterizationState = {
+				.cullMode = VK_CULL_MODE_BACK_BIT,
+				.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE },
+			.depthStencilState = {
+				.depthTestEnable = true,
+				.depthWriteEnable = true,
+				.depthCompareOp = VK_COMPARE_OP_GREATER } }) : Pipeline();
 
-	// TODO-MILKRU: Unify templates, descriptorSets and pipelineLayouts.
+	destroyShader(device, generateDrawsShader);
 
-	VkPushConstantRange pushConstantRange{};
-	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	pushConstantRange.offset = 0;
-	pushConstantRange.size = sizeof(perFrameData);
-
-	VkDescriptorSetLayout descriptorSetLayout =
-		createDescriptorSetLayout(device.deviceVk, { vertShader, fragShader });
-
-	VkPipelineLayout pipelineLayout =
-		createPipelineLayout(device.deviceVk, { descriptorSetLayout }, { pushConstantRange });
-
-	VkDescriptorUpdateTemplate descriptorUpdateTemplate =
-		createDescriptorUpdateTemplate(device.deviceVk, descriptorSetLayout, pipelineLayout, VK_PIPELINE_BIND_POINT_GRAPHICS, { vertShader, fragShader });
-
-	VkPipeline graphicsPipeline =
-		createGraphicsPipeline(device.deviceVk, pipelineLayout, { swapchain.imageFormat }, depthImage.format, { vertShader, fragShader });
-
-	// TODO-MILKRU: Infer shader stages using SpirV-reflect.
-	VkPushConstantRange pushConstantRangeNV{};
-	pushConstantRangeNV.stageFlags = VK_SHADER_STAGE_TASK_BIT_NV | VK_SHADER_STAGE_MESH_BIT_NV;
-	pushConstantRangeNV.offset = 0;
-	pushConstantRangeNV.size = sizeof(perFrameData);
-
-	VkDescriptorSetLayout descriptorSetLayoutNV = device.bMeshShadingPipelineSupported ?
-		createDescriptorSetLayout(device.deviceVk, { taskShader, meshShader, fragShader }) : VK_NULL_HANDLE;
-
-	VkPipelineLayout pipelineLayoutNV = device.bMeshShadingPipelineSupported ?
-		createPipelineLayout(device.deviceVk, { descriptorSetLayoutNV }, { pushConstantRangeNV }) : VK_NULL_HANDLE;
-
-	VkDescriptorUpdateTemplate descriptorUpdateTemplateNV = device.bMeshShadingPipelineSupported ?
-		createDescriptorUpdateTemplate(device.deviceVk, descriptorSetLayoutNV, pipelineLayoutNV,
-			VK_PIPELINE_BIND_POINT_GRAPHICS, { taskShader, meshShader, fragShader }) : VK_NULL_HANDLE;
-
-	VkPipeline graphicsPipelineNV = device.bMeshShadingPipelineSupported ?
-		createGraphicsPipeline(device.deviceVk, pipelineLayoutNV, { swapchain.imageFormat }, depthImage.format,
-			{ taskShader, meshShader, fragShader }) : VK_NULL_HANDLE;
-
-	destroyShader(device, fragShader);
-	destroyShader(device, vertShader);
-
-	if (device.bMeshShadingPipelineSupported)
+	if (device.bMeshShadingPipelineAllowed)
 	{
 		destroyShader(device, meshShader);
 		destroyShader(device, taskShader);
 	}
 
-	destroyShader(device, generateDrawsShader);
+	destroyShader(device, fragShader);
+	destroyShader(device, vertShader);
 
-	Mesh mesh{};
+	GeometryBuffers geometryBuffers;
 	{
-		EASY_BLOCK("LoadMesh");
-		const char* meshPath = argv[1];
-		mesh = loadMesh(meshPath, device.bMeshShadingPipelineSupported);
-	}
+		EASY_BLOCK("InitializeGeometry");
 
-	// TODO-MILKRU: Use one big buffer for sub allocation, or integrate VMA.
+		Geometry geometry{};
 
-	Buffer meshletBuffer = device.bMeshShadingPipelineSupported ?
-		createBuffer(device, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		sizeof(Meshlet) * mesh.meshlets.size(), mesh.meshlets.data()) : Buffer();
-
-	Buffer meshletVerticesBuffer = device.bMeshShadingPipelineSupported ?
-		createBuffer(device, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		sizeof(uint32_t) * mesh.meshletVertices.size(), mesh.meshletVertices.data()) : Buffer();
-	
-	Buffer meshletTrianglesBuffer = device.bMeshShadingPipelineSupported ?
-		createBuffer(device, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		sizeof(uint8_t) * mesh.meshletTriangles.size(), mesh.meshletTriangles.data()) : Buffer();
-
-	Buffer vertexBuffer = createBuffer(device, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		sizeof(Vertex) * mesh.vertices.size(), mesh.vertices.data());
-
-	Buffer indexBuffer = createBuffer(device, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		sizeof(uint32_t) * mesh.indices.size(), mesh.indices.data());
-
-	Buffer drawCountBuffer = createBuffer(device,
-		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sizeof(uint32_t));
-
-	uint32_t maxDrawCount = 64;
-	std::vector<PerDrawData> perDrawDataVector;
-	perDrawDataVector.reserve(maxDrawCount);
-
-	for (uint32_t drawIndex = 0; drawIndex < maxDrawCount; ++drawIndex)
-	{
-		PerDrawData perDrawData = {};
-
-		perDrawData.indexCount = uint32_t(mesh.indices.size());
-		perDrawData.firstIndex = 0;
-		perDrawData.vertexOffset;
-
-		if (device.bMeshShadingPipelineSupported)
+		for (uint32_t meshIndex = 0; meshIndex < _argc - 1; ++meshIndex)
 		{
-			perDrawData.taskCount = (uint32_t(mesh.meshlets.size()) + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
-			perDrawData.firstTask = 0;
+			const char* meshPath = _argv[meshIndex + 1];
+			loadMesh(geometry, meshPath, device.bMeshShadingPipelineAllowed);
 		}
 
-		perDrawData.center[0] = mesh.center[0];
-		perDrawData.center[1] = mesh.center[1];
-		perDrawData.center[2] = mesh.center[2];
-		perDrawData.radius = mesh.radius;
-
-		perDrawDataVector.push_back(perDrawData);
+		geometryBuffers = {
+			.meshletBuffer = device.bMeshShadingPipelineAllowed ?
+				createBuffer(device, {
+					.size = sizeof(Meshlet) * geometry.meshlets.size(),
+					.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+					.pContents = geometry.meshlets.data() }) : Buffer(),
+			
+			.meshletVerticesBuffer = device.bMeshShadingPipelineAllowed ?
+				createBuffer(device, {
+					.size = sizeof(uint32_t) * geometry.meshletVertices.size(),
+					.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+					.pContents = geometry.meshletVertices.data() }) : Buffer(),
+			
+			.meshletTrianglesBuffer = device.bMeshShadingPipelineAllowed ?
+				createBuffer(device, {
+					.size = sizeof(uint8_t) * geometry.meshletTriangles.size(),
+					.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+					.pContents = geometry.meshletTriangles.data() }) : Buffer(),
+			
+			.vertexBuffer = createBuffer(device, {
+				.size = sizeof(Vertex) * geometry.vertices.size(),
+				.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				.pContents = geometry.vertices.data() }),
+			
+			.indexBuffer = createBuffer(device, {
+				.size = sizeof(uint32_t) * geometry.indices.size(),
+				.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+				.pContents = geometry.indices.data() }),
+			
+			.meshesBuffer = createBuffer(device, {
+				.size = sizeof(Mesh) * geometry.meshes.size(),
+				.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				.pContents = geometry.meshes.data() }) };
 	}
 
-	Buffer drawsBuffer = createBuffer(device, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		sizeof(PerDrawData) * perDrawDataVector.size(), perDrawDataVector.data());
+	DrawBuffers drawBuffers;
+	{
+		EASY_BLOCK("InitializeDraws");
 
-	Buffer drawCommandsBuffer = createBuffer(device, VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sizeof(DrawCommand) * maxDrawCount);
+		std::vector<PerDrawData> perDrawDataVector(kMaxDrawCount);
+		for (uint32_t drawIndex = 0; drawIndex < kMaxDrawCount; ++drawIndex)
+		{
+			PerDrawData perDrawData = { .meshIndex = drawIndex % (_argc - 1) };
+
+			auto randomFloat = []()
+			{
+				return float(rand()) / RAND_MAX;
+			};
+
+			// TODO-MILKRU: Multiply meshlet/mesh bounding spheres by scale.
+			perDrawData.model = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f));
+
+			perDrawData.model = glm::rotate(perDrawData.model,
+				glm::radians(360.0f * randomFloat()), glm::vec3(0.0, 1.0, 0.0));
+
+			perDrawData.model = glm::translate(perDrawData.model, {
+				kSpawnCubeSize * (randomFloat() - 0.5f),
+				kSpawnCubeSize * (randomFloat() - 0.5f),
+				kSpawnCubeSize * (randomFloat() - 0.5f) });
+
+			perDrawDataVector[drawIndex] = perDrawData;
+		}
+
+		drawBuffers = {
+			.drawsBuffer = createBuffer(device, {
+				.size = sizeof(PerDrawData) * perDrawDataVector.size(),
+				.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				.pContents = perDrawDataVector.data() }),
+			
+			.drawCommandsBuffer = createBuffer(device, {
+				.size = sizeof(DrawCommand) * kMaxDrawCount,
+				.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT }),
+			
+			.drawCountBuffer = createBuffer(device, {
+				.size = sizeof(uint32_t),
+				.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT }) };
+	}
 
 	std::array<VkCommandBuffer, kMaxFramesInFlightCount> commandBuffers;
 	for (VkCommandBuffer& commandBuffer : commandBuffers)
@@ -388,27 +276,46 @@ int32_t main(int32_t argc, const char** argv)
 		framePacingState = createFramePacingState(device);
 	}
 
-	QueryPool timestampsQueryPool = createQueryPool(device, VK_QUERY_TYPE_TIMESTAMP, /*_queryCount*/ 4);
-	QueryPool statisticsQueryPool = createQueryPool(device, VK_QUERY_TYPE_PIPELINE_STATISTICS, /*_queryCount*/ 1);
+	QueryPool timestampsQueryPool = createQueryPool(device, {
+		.type = VK_QUERY_TYPE_TIMESTAMP,
+		.queryCount = 4 });
+
+	QueryPool statisticsQueryPool = createQueryPool(device, {
+		.type = VK_QUERY_TYPE_PIPELINE_STATISTICS,
+		.queryCount = 1 });
+
+	alignas(16) struct
+	{
+		glm::mat4 viewProjection;
+		glm::vec4 frustumPlanes[6];
+		glm::vec3 cameraPosition;
+		uint32_t maxDrawCount;
+		float lodTransitionBase;
+		float lodTransitionStep;
+		int32_t forcedLod;
+		uint32_t enableMeshFrustumCulling;
+		uint32_t enableMeshletConeCulling;
+		uint32_t enableMeshletFrustumCulling;
+	} perFrameData;
 
 	uint32_t frameIndex = 0;
 
-	initializeGUI(device, swapchain.imageFormat, depthImage.format, (float)kWindowWidth, (float)kWindowHeight);
+	gui::initialize(device, swapchain.format, depthTexture.format, (float)kWindowWidth, (float)kWindowHeight);
 
 	VkPhysicalDeviceProperties physicalDeviceProperties;
 	vkGetPhysicalDeviceProperties(device.physicalDevice, &physicalDeviceProperties);
 
-	InfoGUI infoGUI{};
-	infoGUI.deviceName = physicalDeviceProperties.deviceName;
-	infoGUI.bFreezeCullingEnabled = false;
-	infoGUI.bMeshFrustumCullingEnabled = true;
+	gui::State guiState = {
+		.deviceName = physicalDeviceProperties.deviceName,
+		.bFreezeCameraEnabled = false,
+		.bMeshFrustumCullingEnabled = true };
 
 	bool bMeshShadingPipelineEnabled =
-		infoGUI.bMeshletConeCullingEnabled =
-		infoGUI.bMeshletFrustumCullingEnabled =
-		infoGUI.bMeshShadingPipelineEnabled =
-		infoGUI.bMeshShadingPipelineSupported =
-		device.bMeshShadingPipelineSupported;
+		guiState.bMeshletConeCullingEnabled =
+		guiState.bMeshletFrustumCullingEnabled =
+		guiState.bMeshShadingPipelineEnabled =
+		guiState.bMeshShadingPipelineSupported =
+		device.bMeshShadingPipelineAllowed;
 
 	while (!glfwWindowShouldClose(pWindow))
 	{
@@ -416,16 +323,16 @@ int32_t main(int32_t argc, const char** argv)
 
 		glfwPollEvents();
 
-		newFrameGUI(pWindow, infoGUI);
+		gui::newFrame(pWindow, guiState);
 
-		bMeshShadingPipelineEnabled = infoGUI.bMeshShadingPipelineEnabled;
+		bMeshShadingPipelineEnabled = guiState.bMeshShadingPipelineEnabled;
 
 		VkCommandBuffer commandBuffer = commandBuffers[frameIndex];
 		FramePacingState framePacingState = framePacingStates[frameIndex];
 
 		{
 			EASY_BLOCK("WaitForFences");
-			VK_CALL(vkWaitForFences(device.deviceVk, 1, &framePacingState.inFlightFence, VK_TRUE, UINT64_MAX));
+			VK_CALL(vkWaitForFences(device.device, 1, &framePacingState.inFlightFence, VK_TRUE, UINT64_MAX));
 		}
 
 		VkSurfaceCapabilitiesKHR surfaceCapabilities;
@@ -442,24 +349,33 @@ int32_t main(int32_t argc, const char** argv)
 		{
 			EASY_BLOCK("RecreateSwapchain");
 
-			VK_CALL(vkDeviceWaitIdle(device.deviceVk));
+			VK_CALL(vkDeviceWaitIdle(device.device));
 
-			destroyImage(device, depthImage);
+			destroyTexture(device, depthTexture);
 
-			Swapchain newSwapchain = createSwapchain(pWindow, device, swapchain.swapchainVk);
+			Swapchain newSwapchain = createSwapchain(pWindow, device, {
+				.bEnableVSync = kbEnableVSync,
+				.preferredSwapchainImageCount = kPreferredSwapchainImageCount,
+				.oldSwapchain = swapchain.swapchain });
+
 			destroySwapchain(device, swapchain);
 			swapchain = newSwapchain;
 
-			depthImage = createImage(device, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-				swapchain.extent.width, swapchain.extent.height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+			depthTexture = createTexture(device, {
+				.width = swapchain.extent.width,
+				.height = swapchain.extent.height,
+				.format = VK_FORMAT_D32_SFLOAT,
+				.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+				.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL });
 
 			continue;
 		}
 
-		VK_CALL(vkResetFences(device.deviceVk, 1, &framePacingState.inFlightFence));
+		VK_CALL(vkResetFences(device.device, 1, &framePacingState.inFlightFence));
 
-		uint32_t imageIndex;
-		VK_CALL(vkAcquireNextImageKHR(device.deviceVk, swapchain.swapchainVk, UINT64_MAX, framePacingState.imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex));
+		uint32_t currentSwapchainImageIndex;
+		VK_CALL(vkAcquireNextImageKHR(device.device, swapchain.swapchain, UINT64_MAX,
+			framePacingState.imageAvailableSemaphore, VK_NULL_HANDLE, &currentSwapchainImageIndex));
 
 		{
 			EASY_BLOCK("Draw");
@@ -472,32 +388,12 @@ int32_t main(int32_t argc, const char** argv)
 			resetQueryPool(commandBuffer, timestampsQueryPool);
 			resetQueryPool(commandBuffer, statisticsQueryPool);
 
-			VkRenderingAttachmentInfoKHR colorAttachment = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR };
-			colorAttachment.imageView = swapchain.imageViews[imageIndex];
-			colorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
-			colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-			colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-			colorAttachment.clearValue.color = { { 34.0f / 255.0f, 34.0f / 255.0f, 29.0f / 255.0f, 1.0f } };
-
-			VkRenderingAttachmentInfoKHR depthAttachment = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR };
-			depthAttachment.imageView = depthImage.view;
-			depthAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR;
-			depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-			depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-			depthAttachment.clearValue.depthStencil = { 0.0f, 0 };
-
-			VkRenderingInfoKHR renderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO_KHR };
-			renderingInfo.renderArea.offset = { 0, 0 };
-			renderingInfo.renderArea.extent = swapchain.extent;
-			renderingInfo.layerCount = 1;
-			renderingInfo.colorAttachmentCount = 1;
-			renderingInfo.pColorAttachments = &colorAttachment;
-			renderingInfo.pDepthAttachment = &depthAttachment;
-
 			{
 				GPU_STATS(commandBuffer, statisticsQueryPool, Main);
 
 				{
+					EASY_BLOCK("UpdateFrameData");
+
 					static auto previousTime = std::chrono::high_resolution_clock::now();
 					auto currentTime = std::chrono::high_resolution_clock::now();
 
@@ -506,14 +402,17 @@ int32_t main(int32_t argc, const char** argv)
 
 					updateCamera(pWindow, deltaTime, camera);
 
-					perFrameData.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 					perFrameData.viewProjection = camera.projection * camera.view;
-					perFrameData.maxDrawCount = maxDrawCount;
-					perFrameData.enableMeshFrustumCulling = infoGUI.bMeshFrustumCullingEnabled ? 1 : 0;
-					perFrameData.enableMeshletConeCulling = infoGUI.bMeshletConeCullingEnabled ? 1 : 0;
-					perFrameData.enableMeshletFrustumCulling = infoGUI.bMeshletFrustumCullingEnabled ? 1 : 0;
+					perFrameData.maxDrawCount = kMaxDrawCount;
+					// TODO-MILKRU: Rename?
+					perFrameData.lodTransitionBase = 4.0f;
+					perFrameData.lodTransitionStep = 1.25f;
+					perFrameData.forcedLod = guiState.bForceMeshLodEnabled ? guiState.forcedLod : -1;
+					perFrameData.enableMeshFrustumCulling = guiState.bMeshFrustumCullingEnabled ? 1u : 0u;
+					perFrameData.enableMeshletConeCulling = guiState.bMeshletConeCullingEnabled ? 1u : 0u;
+					perFrameData.enableMeshletFrustumCulling = guiState.bMeshletFrustumCullingEnabled ? 1u : 0u;
 
-					if (!infoGUI.bFreezeCullingEnabled)
+					if (!guiState.bFreezeCameraEnabled)
 					{
 						perFrameData.cameraPosition = camera.position;
 						getFrustumPlanes(camera, perFrameData.frustumPlanes);
@@ -523,97 +422,96 @@ int32_t main(int32_t argc, const char** argv)
 				{
 					GPU_BLOCK(commandBuffer, timestampsQueryPool, GenerateDraws);
 
-					vkCmdFillBuffer(commandBuffer, drawCountBuffer.bufferVk, 0, sizeof(uint32_t), 0);
+					fillBuffer(commandBuffer, device, drawBuffers.drawCountBuffer, 0,
+						VK_ACCESS_INDIRECT_COMMAND_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+						VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-					vkCmdPushConstants(commandBuffer, generateDrawsPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(perFrameData), &perFrameData);
+					bufferBarrier(commandBuffer, device, drawBuffers.drawCommandsBuffer,
+						VK_ACCESS_INDIRECT_COMMAND_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+						VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-					DescriptorInfo descriptorInfos[] =
-					{
-						drawsBuffer.bufferVk,
-						drawCommandsBuffer.bufferVk,
-						drawCountBuffer.bufferVk
-					};
+					executePass(commandBuffer, {
+						.pipeline = generateDrawsPipeline,
+						.bindings = {
+							geometryBuffers.meshesBuffer,
+							drawBuffers.drawsBuffer,
+							drawBuffers.drawCommandsBuffer,
+							drawBuffers.drawCountBuffer },
+						.pushConstants = {
+							.size = sizeof(perFrameData),
+							.pData = &perFrameData } },
+							[&]()
+						{
+							vkCmdDispatch(commandBuffer, divideRoundingUp(kMaxDrawCount, kShaderGroupSizeNV), 1, 1);
+						});
 
-					vkCmdPushDescriptorSetWithTemplateKHR(commandBuffer, generateDrawsDescriptorUpdateTemplate,
-						generateDrawsPipelineLayout, 0, descriptorInfos);
+					bufferBarrier(commandBuffer, device, drawBuffers.drawCountBuffer,
+						VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+						VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT);
 
-					vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, generateDrawsPipeline);
-
-					uint32_t groupCount = (maxDrawCount + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
-					vkCmdDispatch(commandBuffer, groupCount, 1, 1);
+					bufferBarrier(commandBuffer, device, drawBuffers.drawCommandsBuffer,
+						VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+						VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT);
 				}
 
 				{
 					GPU_BLOCK(commandBuffer, timestampsQueryPool, Geometry);
 
-					transferImageLayout(commandBuffer, swapchain.images[imageIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+					textureBarrier(commandBuffer, swapchain.textures[currentSwapchainImageIndex], VK_IMAGE_ASPECT_COLOR_BIT,
 						VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 						VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-					vkCmdBeginRenderingKHR(commandBuffer, &renderingInfo);
+					executePass(commandBuffer, {
+						.pipeline = bMeshShadingPipelineEnabled ? geometryMeshletPipeline : geometryPipeline,
+						.viewport = {
+							.offset = { 0.0f, 0.0f },
+							.extent = { swapchain.extent.width, swapchain.extent.height }},
+						.scissor = {
+							.offset = { 0, 0 },
+							.extent = { swapchain.extent.width, swapchain.extent.height }},
+						.colorAttachments = {{
+							.texture = swapchain.textures[currentSwapchainImageIndex],
+							.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+							.clear = { { 34.0f / 255.0f, 34.0f / 255.0f, 29.0f / 255.0f, 1.0f } } }},
+						.depthStencilAttachment = {
+							.texture = depthTexture,
+							.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+							.clear = { 0.0f, 0 } },
+						.bindings = bMeshShadingPipelineEnabled ?
+							Bindings({
+								drawBuffers.drawsBuffer,
+								drawBuffers.drawCommandsBuffer,
+								geometryBuffers.meshletBuffer,
+								geometryBuffers.meshesBuffer,
+								geometryBuffers.meshletVerticesBuffer,
+								geometryBuffers.meshletTrianglesBuffer,
+								geometryBuffers.vertexBuffer }) :
+							Bindings({
+								geometryBuffers.vertexBuffer,
+								drawBuffers.drawsBuffer,
+								drawBuffers.drawCommandsBuffer }),
+						.pushConstants = {
+							.size = sizeof(perFrameData),
+							.pData = &perFrameData } },
+							[&]()
+						{
+							if (bMeshShadingPipelineEnabled)
+							{
+								vkCmdDrawMeshTasksIndirectCountNV(commandBuffer, drawBuffers.drawCommandsBuffer.resource,
+									offsetof(DrawCommand, taskCount), drawBuffers.drawCountBuffer.resource, 0, kMaxDrawCount, sizeof(DrawCommand));
+							}
+							else
+							{
+								vkCmdBindIndexBuffer(commandBuffer, geometryBuffers.indexBuffer.resource, 0, VK_INDEX_TYPE_UINT32);
 
-					// Flipped viewport.
-					// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
-					VkViewport viewport{};
-					viewport.x = 0.0f;
-					viewport.y = float(swapchain.extent.height);
-					viewport.width = float(swapchain.extent.width);
-					viewport.height = -float(swapchain.extent.height);
-					viewport.minDepth = 0.0f;
-					viewport.maxDepth = 1.0f;
+								vkCmdDrawIndexedIndirectCount(commandBuffer, drawBuffers.drawCommandsBuffer.resource,
+									offsetof(DrawCommand, indexCount), drawBuffers.drawCountBuffer.resource, 0, kMaxDrawCount, sizeof(DrawCommand));
+							}
+						});
 
-					VkRect2D scissorRect{};
-					scissorRect.offset = { 0, 0 };
-					scissorRect.extent = swapchain.extent;
+					gui::drawFrame(commandBuffer, frameIndex, swapchain.textures[currentSwapchainImageIndex]);
 
-					vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-					vkCmdSetScissor(commandBuffer, 0, 1, &scissorRect);
-
-					vkCmdPushConstants(commandBuffer,
-						bMeshShadingPipelineEnabled ? pipelineLayoutNV : pipelineLayout,
-						bMeshShadingPipelineEnabled ? VK_SHADER_STAGE_TASK_BIT_NV | VK_SHADER_STAGE_MESH_BIT_NV : VK_SHADER_STAGE_VERTEX_BIT,
-						0, sizeof(perFrameData), &perFrameData);
-
-					std::vector<DescriptorInfo> descriptorInfos;
-					descriptorInfos.reserve(4);
-
-					if (bMeshShadingPipelineEnabled)
-					{
-						descriptorInfos.push_back(meshletBuffer.bufferVk);
-						descriptorInfos.push_back(meshletVerticesBuffer.bufferVk);
-						descriptorInfos.push_back(meshletTrianglesBuffer.bufferVk);
-					}
-
-					descriptorInfos.push_back(vertexBuffer.bufferVk);
-
-					vkCmdPushDescriptorSetWithTemplateKHR(commandBuffer,
-						bMeshShadingPipelineEnabled ? descriptorUpdateTemplateNV : descriptorUpdateTemplate,
-						bMeshShadingPipelineEnabled ? pipelineLayoutNV : pipelineLayout, 0, descriptorInfos.data());
-
-					if (!bMeshShadingPipelineEnabled)
-					{
-						vkCmdBindIndexBuffer(commandBuffer, indexBuffer.bufferVk, 0, VK_INDEX_TYPE_UINT32);
-					}
-
-					vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-						bMeshShadingPipelineEnabled ? graphicsPipelineNV : graphicsPipeline);
-
-					if (bMeshShadingPipelineEnabled)
-					{
-						vkCmdDrawMeshTasksIndirectCountNV(commandBuffer, drawCommandsBuffer.bufferVk,
-							offsetof(DrawCommand, taskCount), drawCountBuffer.bufferVk, 0, maxDrawCount, sizeof(DrawCommand));
-					}
-					else
-					{
-						vkCmdDrawIndexedIndirectCount(commandBuffer, drawCommandsBuffer.bufferVk,
-							offsetof(DrawCommand, indexCount), drawCountBuffer.bufferVk, 0, maxDrawCount, sizeof(DrawCommand));
-					}
-
-					drawFrameGUI(commandBuffer, frameIndex);
-
-					vkCmdEndRenderingKHR(commandBuffer);
-
-					transferImageLayout(commandBuffer, swapchain.images[imageIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+					textureBarrier(commandBuffer, swapchain.textures[currentSwapchainImageIndex], VK_IMAGE_ASPECT_COLOR_BIT,
 						VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 						VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 				}
@@ -622,55 +520,33 @@ int32_t main(int32_t argc, const char** argv)
 			VK_CALL(vkEndCommandBuffer(commandBuffer));
 		}
 
-		VkSemaphore waitSemaphores[] = { framePacingState.imageAvailableSemaphore };
-		VkSemaphore signalSemaphores[] = { framePacingState.renderFinishedSemaphore };
-		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-
-		VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-		submitInfo.waitSemaphoreCount = ARRAY_SIZE(waitSemaphores);
-		submitInfo.pWaitSemaphores = waitSemaphores;
-		submitInfo.pWaitDstStageMask = waitStages;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffer;
-		submitInfo.signalSemaphoreCount = ARRAY_SIZE(signalSemaphores);
-		submitInfo.pSignalSemaphores = signalSemaphores;
-
-		VK_CALL(vkQueueSubmit(device.graphicsQueue.queueVk, 1, &submitInfo, framePacingState.inFlightFence));
-
-		VkPresentInfoKHR presentInfo = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
-		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = signalSemaphores;
-		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = &swapchain.swapchainVk;
-		presentInfo.pImageIndices = &imageIndex;
-
-		VK_CALL(vkQueuePresentKHR(device.graphicsQueue.queueVk, &presentInfo));
+		submitAndPresent(commandBuffer, device, swapchain, currentSwapchainImageIndex, framePacingState);
 
 		updateQueryPoolResults(device, timestampsQueryPool);
 		updateQueryPoolResults(device, statisticsQueryPool);
 
-		GPU_BLOCK_RESULT(timestampsQueryPool, GenerateDraws, physicalDeviceProperties.limits, infoGUI.generateDrawsGpuTime);
-		GPU_BLOCK_RESULT(timestampsQueryPool, Geometry, physicalDeviceProperties.limits, infoGUI.geometryGpuTime);
-		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::InputAssemblyVertices, infoGUI.inputAssemblyVertices);
-		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::InputAssemblyPrimitives, infoGUI.inputAssemblyPrimitives);
-		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::VertexShaderInvocations, infoGUI.vertexShaderInvocations);
-		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::ClippingInvocations, infoGUI.clippingInvocations);
-		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::ClippingPrimitives, infoGUI.clippingPrimitives);
-		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::FragmentShaderInvocations, infoGUI.fragmentShaderInvocations);
-		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::ComputeShaderInvocations, infoGUI.computeShaderInvocations);
+		GPU_BLOCK_RESULT(timestampsQueryPool, GenerateDraws, physicalDeviceProperties.limits, guiState.generateDrawsGpuTime);
+		GPU_BLOCK_RESULT(timestampsQueryPool, Geometry, physicalDeviceProperties.limits, guiState.geometryGpuTime);
+		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::InputAssemblyVertices, guiState.inputAssemblyVertices);
+		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::InputAssemblyPrimitives, guiState.inputAssemblyPrimitives);
+		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::VertexShaderInvocations, guiState.vertexShaderInvocations);
+		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::ClippingInvocations, guiState.clippingInvocations);
+		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::ClippingPrimitives, guiState.clippingPrimitives);
+		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::FragmentShaderInvocations, guiState.fragmentShaderInvocations);
+		GPU_STATS_RESULT(statisticsQueryPool, Main, StatType::ComputeShaderInvocations, guiState.computeShaderInvocations);
 
 		frameIndex = (frameIndex + 1) % kMaxFramesInFlightCount;
 	}
 
 	{
 		EASY_BLOCK("DeviceWaitIdle");
-		VK_CALL(vkDeviceWaitIdle(device.deviceVk));
+		VK_CALL(vkDeviceWaitIdle(device.device));
 	}
 
 	{
 		EASY_BLOCK("Cleanup");
 
-		terminateGUI();
+		gui::terminate();
 
 		destroyQueryPool(device, timestampsQueryPool);
 		destroyQueryPool(device, statisticsQueryPool);
@@ -680,46 +556,37 @@ int32_t main(int32_t argc, const char** argv)
 			destroyFramePacingState(device, framePacingState);
 		}
 
-		if (device.bMeshShadingPipelineSupported)
 		{
-			destroyBuffer(device, meshletBuffer);
-			destroyBuffer(device, meshletVerticesBuffer);
-			destroyBuffer(device, meshletTrianglesBuffer);
+			if (device.bMeshShadingPipelineAllowed)
+			{
+				destroyBuffer(device, geometryBuffers.meshletBuffer);
+				destroyBuffer(device, geometryBuffers.meshletVerticesBuffer);
+				destroyBuffer(device, geometryBuffers.meshletTrianglesBuffer);
+			}
+
+			destroyBuffer(device, geometryBuffers.vertexBuffer);
+			destroyBuffer(device, geometryBuffers.indexBuffer);
+			destroyBuffer(device, geometryBuffers.meshesBuffer);
 		}
 
-		destroyBuffer(device, vertexBuffer);
-		destroyBuffer(device, indexBuffer);
-		destroyBuffer(device, drawCommandsBuffer);
-		destroyBuffer(device, drawsBuffer);
-		destroyBuffer(device, drawCountBuffer);
-
-		if (device.bMeshShadingPipelineSupported)
 		{
-			vkDestroyPipeline(device.deviceVk, graphicsPipelineNV, nullptr);
-			vkDestroyDescriptorUpdateTemplate(device.deviceVk, descriptorUpdateTemplateNV, nullptr);
-			vkDestroyPipelineLayout(device.deviceVk, pipelineLayoutNV, nullptr);
-			vkDestroyDescriptorSetLayout(device.deviceVk, descriptorSetLayoutNV, nullptr);
+			destroyBuffer(device, drawBuffers.drawsBuffer);
+			destroyBuffer(device, drawBuffers.drawCommandsBuffer);
+			destroyBuffer(device, drawBuffers.drawCountBuffer);
 		}
 
-		vkDestroyPipeline(device.deviceVk, graphicsPipeline, nullptr);
-		vkDestroyDescriptorUpdateTemplate(device.deviceVk, descriptorUpdateTemplate, nullptr);
-		vkDestroyPipelineLayout(device.deviceVk, pipelineLayout, nullptr);
-		vkDestroyDescriptorSetLayout(device.deviceVk, descriptorSetLayout, nullptr);
+		if (device.bMeshShadingPipelineAllowed)
+		{
+			destroyPipeline(device, geometryMeshletPipeline);
+		}
 
-		vkDestroyPipeline(device.deviceVk, generateDrawsPipeline, nullptr);
-		vkDestroyDescriptorUpdateTemplate(device.deviceVk, generateDrawsDescriptorUpdateTemplate, nullptr);
-		vkDestroyPipelineLayout(device.deviceVk, generateDrawsPipelineLayout, nullptr);
-		vkDestroyDescriptorSetLayout(device.deviceVk, generateDrawsDescriptorSetLayout, nullptr);
+		destroyPipeline(device, geometryPipeline);
+		destroyPipeline(device, generateDrawsPipeline);
 
-		destroyImage(device, depthImage);
-
+		destroyTexture(device, depthTexture);
 		destroySwapchain(device, swapchain);
-
 		destroyDevice(device);
-
-		glfwDestroyWindow(pWindow);
-
-		glfwTerminate();
+		destroyWindow(pWindow);
 	}
 
 	{

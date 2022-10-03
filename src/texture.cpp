@@ -1,88 +1,8 @@
 #include "common.h"
 #include "device.h"
-#include "pipeline.h"
-#include "resources.h"
+#include "texture.h"
 
 #include <string.h>
-
-Buffer createBuffer(
-	Device _device,
-	VkBufferUsageFlags _usageFlags,
-	VkMemoryPropertyFlags _memoryFlags,
-	VkDeviceSize _size,
-	void* _pContents)
-{
-	assert(_size > 0);
-
-	if (_pContents)
-	{
-		_usageFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	}
-
-	VkBufferCreateInfo bufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-	bufferCreateInfo.size = _size;
-	bufferCreateInfo.usage = _usageFlags;
-	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	Buffer buffer{};
-	VK_CALL(vkCreateBuffer(_device.deviceVk, &bufferCreateInfo, nullptr, &buffer.bufferVk));
-
-	buffer.size = _size;
-
-	VkMemoryRequirements memoryRequirements;
-	vkGetBufferMemoryRequirements(_device.deviceVk, buffer.bufferVk, &memoryRequirements);
-
-	uint32_t memoryTypeIndex = tryFindMemoryType(_device, memoryRequirements.memoryTypeBits, _memoryFlags);
-	assert(memoryTypeIndex != ~0u);
-
-	VkMemoryAllocateInfo allocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-	allocateInfo.allocationSize = memoryRequirements.size;
-	allocateInfo.memoryTypeIndex = memoryTypeIndex;
-
-	VK_CALL(vkAllocateMemory(_device.deviceVk, &allocateInfo, nullptr, &buffer.memory));
-
-	vkBindBufferMemory(_device.deviceVk, buffer.bufferVk, buffer.memory, 0);
-
-	if (_memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-	{
-		// Persistently mapped memory, which should be faster on NVidia.
-		vkMapMemory(_device.deviceVk, buffer.memory, 0, _size, 0, &buffer.data);
-	}
-
-	if (_pContents)
-	{
-		Buffer stagingBuffer = createBuffer(_device, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, _size);
-
-		memcpy(stagingBuffer.data, _pContents, stagingBuffer.size);
-
-		immediateSubmit(_device, [&](VkCommandBuffer _commandBuffer)
-			{
-				VkBufferCopy copyRegion{};
-				copyRegion.size = _size;
-				vkCmdCopyBuffer(_commandBuffer, stagingBuffer.bufferVk, buffer.bufferVk, 1, &copyRegion);
-			});
-
-		destroyBuffer(_device, stagingBuffer);
-	}
-
-	return buffer;
-}
-
-void destroyBuffer(
-	Device _device,
-	Buffer& _rBuffer)
-{
-	if (_rBuffer.data)
-	{
-		vkUnmapMemory(_device.deviceVk, _rBuffer.memory);
-	}
-
-	vkDestroyBuffer(_device.deviceVk, _rBuffer.bufferVk, nullptr);
-	vkFreeMemory(_device.deviceVk, _rBuffer.memory, nullptr);
-
-	_rBuffer = {};
-}
 
 VkImageView createImageView(
 	VkDevice _device,
@@ -105,95 +25,106 @@ VkImageView createImageView(
 	return imageView;
 }
 
-Image createImage(
+Texture createTexture(
 	Device _device,
-	VkImageUsageFlags _usage,
-	VkMemoryPropertyFlags _memoryFlags,
-	uint32_t _width,
-	uint32_t _height,
-	VkFormat _format,
-	VkImageLayout _layout)
+	TextureDesc _desc)
 {
+	assert(_desc.width != 0);
+	assert(_desc.height != 0);
+	assert(_desc.format != VK_FORMAT_UNDEFINED);
+	assert(_desc.usage != 0);
+
+	Texture texture = {
+		.sampler = _desc.sampler,
+		.format = _desc.format };
+
 	VkImageCreateInfo imageCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-	imageCreateInfo.format = _format;
-	imageCreateInfo.extent.width = _width;
-	imageCreateInfo.extent.height = _height;
+	imageCreateInfo.format = texture.format;
+	imageCreateInfo.extent.width = _desc.width;
+	imageCreateInfo.extent.height = _desc.height;
 	imageCreateInfo.extent.depth = 1;
 	imageCreateInfo.mipLevels = 1;
 	imageCreateInfo.arrayLayers = 1;
 	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-	imageCreateInfo.usage = _usage;
+	imageCreateInfo.usage = _desc.usage;
 	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	Image image{};
-	image.format = _format;
+	VmaAllocationCreateInfo allocationCreateInfo{};
+	allocationCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
-	VK_CALL(vkCreateImage(_device.deviceVk, &imageCreateInfo, nullptr, &image.imageVk));
+	VK_CALL(vmaCreateImage(_device.allocator, &imageCreateInfo,
+		&allocationCreateInfo, &texture.resource, &texture.allocation, nullptr));
 
-	VkMemoryRequirements memoryRequirements;
-	vkGetImageMemoryRequirements(_device.deviceVk, image.imageVk, &memoryRequirements);
+	texture.view = createImageView(_device.device, texture.resource, texture.format);
 
-	uint32_t memoryTypeIndex = tryFindMemoryType(_device, memoryRequirements.memoryTypeBits, _memoryFlags);
-	assert(memoryTypeIndex != ~0u);
-
-	VkMemoryAllocateInfo allocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-	allocateInfo.allocationSize = memoryRequirements.size;
-	allocateInfo.memoryTypeIndex;
-
-	VK_CALL(vkAllocateMemory(_device.deviceVk, &allocateInfo, nullptr, &image.memory));
-	VK_CALL(vkBindImageMemory(_device.deviceVk, image.imageVk, image.memory, 0));
-
-	image.view = createImageView(_device.deviceVk, image.imageVk, _format);
-
-	if (_layout != VK_IMAGE_LAYOUT_UNDEFINED)
+	if (_desc.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
 		immediateSubmit(_device, [&](VkCommandBuffer _commandBuffer)
 			{
-				transferImageLayout(_commandBuffer, image.imageVk, VK_IMAGE_ASPECT_DEPTH_BIT,
-					VK_IMAGE_LAYOUT_UNDEFINED, _layout);
+				textureBarrier(_commandBuffer, texture, VK_IMAGE_ASPECT_DEPTH_BIT,
+					VK_IMAGE_LAYOUT_UNDEFINED, _desc.layout);
 			});
 	}
 
-	return image;
+	return texture;
 }
 
-void destroyImage(
+void destroyTexture(
 	Device _device,
-	Image& _rImage)
+	Texture& _rTexture)
 {
-	vkDestroyImage(_device.deviceVk, _rImage.imageVk, nullptr);
-	vkDestroyImageView(_device.deviceVk, _rImage.view, nullptr);
-	vkFreeMemory(_device.deviceVk, _rImage.memory, nullptr);
+	vkDestroyImageView(_device.device, _rTexture.view, nullptr);
+	vmaDestroyImage(_device.allocator, _rTexture.resource, _rTexture.allocation);
 
-	_rImage = {};
+	_rTexture = {};
+}
+
+VkSampler createSampler(
+	VkDevice _device,
+	SamplerDesc _desc)
+{
+	VkSamplerCreateInfo samplerCreateInfo = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	samplerCreateInfo.maxAnisotropy = 1.0f;
+	samplerCreateInfo.magFilter = _desc.filter;
+	samplerCreateInfo.minFilter = _desc.filter;
+	samplerCreateInfo.mipmapMode = _desc.mipmapMode;
+	samplerCreateInfo.addressModeU = _desc.addressMode;
+	samplerCreateInfo.addressModeV = _desc.addressMode;
+	samplerCreateInfo.addressModeW = _desc.addressMode;
+	samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+
+	VkSampler sampler;
+	VK_CALL(vkCreateSampler(_device, &samplerCreateInfo, nullptr, &sampler));
+
+	return sampler;
 }
 
 // Image layout transfers.
 // https://github.com/SaschaWillems/Vulkan
-void transferImageLayout(
+void textureBarrier(
 	VkCommandBuffer _commandBuffer,
-	VkImage _image,
+	Texture _texture,
 	VkImageAspectFlags _aspectMask,
 	VkImageLayout _oldLayout,
 	VkImageLayout _newLayout,
 	VkPipelineStageFlags _srcStageMask,
 	VkPipelineStageFlags _dstStageMask)
 {
-	VkImageSubresourceRange subresourceRange{};
-	subresourceRange.aspectMask = _aspectMask;
-	subresourceRange.baseMipLevel = 0;
-	subresourceRange.levelCount = 1;
-	subresourceRange.layerCount = 1;
+	VkImageSubresourceRange subresourceRange = {
+		.aspectMask = _aspectMask,
+		.baseMipLevel = 0,
+		.levelCount = 1,
+		.layerCount = 1 };
 
 	VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 	imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	imageMemoryBarrier.oldLayout = _oldLayout;
 	imageMemoryBarrier.newLayout = _newLayout;
-	imageMemoryBarrier.image = _image;
+	imageMemoryBarrier.image = _texture.resource;
 	imageMemoryBarrier.subresourceRange = subresourceRange;
 
 	// Source access mask controls actions that have to be finished on the old layout,

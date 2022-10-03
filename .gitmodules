@@ -28,3 +28,7 @@
 	path = 3rdparty/fast_obj
 	url = https://github.com/thisistherk/fast_obj
 	branch = master
+[submodule "3rdparty/VulkanMemoryAllocator"]
+	path = 3rdparty/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+	branch = master

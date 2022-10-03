@@ -1,16 +1,19 @@
-#version 450
+#version 460
 
+#extension GL_EXT_control_flow_attributes: require
 #extension GL_EXT_shader_8bit_storage: require
 #extension GL_EXT_shader_16bit_storage: require
 #extension GL_NV_mesh_shader: require
 #extension GL_KHR_shader_subgroup_ballot: require
 
-#include "shader_constants.h"
 #include "shader_common.h"
 
 layout(local_size_x = kShaderGroupSizeNV) in;
 
-layout(binding = 0) readonly buffer Meshlets { Meshlet meshlets[]; };
+layout(binding = 0) readonly buffer PerDrawDataVector { PerDrawData perDrawDataVector[]; };
+layout(binding = 1) readonly buffer DrawCommands { DrawCommand drawCommands[]; };
+layout(binding = 2) readonly buffer Meshlets { Meshlet meshlets[]; };
+layout(binding = 3) readonly buffer Meshes { Mesh meshes[]; };
 
 taskNV out Task
 {
@@ -24,18 +27,32 @@ layout (push_constant) uniform block
 
 void main()
 {
-	uint groupThreadIndex = gl_LocalInvocationID.x;
-	uint meshletIndex = gl_GlobalInvocationID.x;
+	uint drawIndex = drawCommands[gl_DrawID].drawIndex;
+	PerDrawData perDrawData = perDrawDataVector[drawIndex];
+	
+	Mesh mesh = meshes[perDrawData.meshIndex];
+	
+	uint lodIndex = drawCommands[gl_DrawID].lodIndex;
+	MeshLod meshLod = mesh.lods[lodIndex];
 
-	vec3 coneApex = (perFrameData.model * vec4(
+	uint groupThreadIndex = gl_LocalInvocationID.x;
+	uint localMeshletIndex = gl_GlobalInvocationID.x;
+	uint meshletIndex = meshLod.meshletOffset + localMeshletIndex;
+	
+	if (localMeshletIndex >= meshLod.meshletCount)
+	{
+		return;
+	}
+
+	vec3 coneApex = (perDrawData.model * vec4(
 		meshlets[meshletIndex].center[0],
 		meshlets[meshletIndex].center[1],
 		meshlets[meshletIndex].center[2], 1.0)).xyz;
 	
-	vec3 coneAxis = (perFrameData.model * vec4(
+	vec3 coneAxis = (perDrawData.model * vec4(
 		int(meshlets[meshletIndex].coneAxis[0]) / 127.0,
 		int(meshlets[meshletIndex].coneAxis[1]) / 127.0,
-		int(meshlets[meshletIndex].coneAxis[2]) / 127.0, 1.0)).xyz;
+		int(meshlets[meshletIndex].coneAxis[2]) / 127.0, 0.0)).xyz;
 
 	vec3 cameraPosition = perFrameData.cameraPosition;
 	float coneCutoff = int(meshlets[meshletIndex].coneCutoff) / 127.0;
@@ -45,13 +62,16 @@ void main()
 		dot(normalize(coneApex - cameraPosition), coneAxis) >= coneCutoff;
 
 	bool frustumCulled = false;
+
+	[[unroll]]
 	for(int i = 0; i < 6; ++i)
 	{
 		frustumCulled = frustumCulled ||
 			dot(vec4(coneApex, 1.0), perFrameData.frustumPlanes[i]) + meshlets[meshletIndex].radius < 0.0;
 	}
-	frustumCulled = frustumCulled && perFrameData.enableMeshletFrustumCulling == 1;
 
+	frustumCulled = frustumCulled && perFrameData.enableMeshletFrustumCulling == 1;
+	
 	bool visible = !coneCulled && !frustumCulled;
 	uvec4 visibleBallot = subgroupBallot(visible);
 	

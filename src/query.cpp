@@ -4,14 +4,15 @@
 
 static const VkQueryPipelineStatisticFlagBits kPipelineStats[] =
 {
-	VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT,
-	VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT,
-	VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT,
-	VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT,
-	VK_QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT,
-	VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT,
-	VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT
+	VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT,     // InputAssemblyVertices
+	VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT,   // InputAssemblyPrimitives
+	VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT,   // VertexShaderInvocations
+	VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT,        // ClippingInvocations
+	VK_QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT,         // ClippingPrimitives
+	VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT, // FragmentShaderInvocations
+	VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT,  // ComputeShaderInvocations
 };
+static_assert(ARRAY_SIZE(kPipelineStats) == int32_t(StatType::Count));
 
 static uint32_t getQueryResultElementCount(
 	VkQueryType _type)
@@ -21,22 +22,21 @@ static uint32_t getQueryResultElementCount(
 
 QueryPool createQueryPool(
 	Device _device,
-	VkQueryType _type,
-	uint32_t _queryCount)
+	QueryPoolDesc _desc)
 {
 	assert(
-		_type == VK_QUERY_TYPE_PIPELINE_STATISTICS ||
-		_type == VK_QUERY_TYPE_TIMESTAMP);
+		_desc.type == VK_QUERY_TYPE_PIPELINE_STATISTICS ||
+		_desc.type == VK_QUERY_TYPE_TIMESTAMP);
 
 	QueryPool queryPool{};
-	queryPool.type = _type;
-	queryPool.queryCapacity = _queryCount;
+	queryPool.type = _desc.type;
+	queryPool.queryCapacity = _desc.queryCount;
 
 	VkQueryPoolCreateInfo queryPoolCreateInfo = { VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO };
-	queryPoolCreateInfo.queryType = _type;
-	queryPoolCreateInfo.queryCount = _queryCount;
+	queryPoolCreateInfo.queryType = _desc.type;
+	queryPoolCreateInfo.queryCount = _desc.queryCount;
 
-	if (_type == VK_QUERY_TYPE_PIPELINE_STATISTICS)
+	if (_desc.type == VK_QUERY_TYPE_PIPELINE_STATISTICS)
 	{
 		for (uint32_t statisticIndex = 0; statisticIndex < ARRAY_SIZE(kPipelineStats); ++statisticIndex)
 		{
@@ -44,10 +44,10 @@ QueryPool createQueryPool(
 		}
 	}
 
-	VK_CALL(vkCreateQueryPool(_device.deviceVk, &queryPoolCreateInfo, nullptr, &queryPool.queryPoolVk));
+	VK_CALL(vkCreateQueryPool(_device.device, &queryPoolCreateInfo, nullptr, &queryPool.queryPoolVk));
 
 	uint32_t resultElementCount = getQueryResultElementCount(queryPool.type);
-	queryPool.queryResults.resize(size_t(resultElementCount) * _queryCount);
+	queryPool.queryResults.resize(size_t(resultElementCount) * _desc.queryCount);
 
 	return queryPool;
 }
@@ -58,7 +58,7 @@ void destroyQueryPool(
 {
 	if (_rQueryPool.queryPoolVk != VK_NULL_HANDLE)
 	{
-		vkDestroyQueryPool(_device.deviceVk, _rQueryPool.queryPoolVk, nullptr);
+		vkDestroyQueryPool(_device.device, _rQueryPool.queryPoolVk, nullptr);
 	}
 
 	_rQueryPool.queryResults.clear();
@@ -143,7 +143,7 @@ void updateQueryPoolResults(
 
 	uint32_t resultElementCount = getQueryResultElementCount(_rQueryPool.type);
 
-	VkResult result = vkGetQueryPoolResults(_device.deviceVk, _rQueryPool.queryPoolVk, 0, _rQueryPool.allocatedQueries,
+	VkResult result = vkGetQueryPoolResults(_device.device, _rQueryPool.queryPoolVk, 0, _rQueryPool.allocatedQueries,
 		_rQueryPool.queryResults.size() * sizeof(uint64_t), _rQueryPool.queryResults.data(), resultElementCount * sizeof(uint64_t),
 		VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
 
@@ -156,8 +156,6 @@ uint64_t getQueryResult(
 	uint32_t _statisticsOffset)
 {
 	assert(_rQueryPool.status == QueryPoolStatus::Available);
-
-	// TODO-MILKRU: Replace with static_assert once cpp17 or higher gets integrate.
 	assert(_statisticsOffset < ARRAY_SIZE(kPipelineStats));
 
 	uint32_t resultElementCount = getQueryResultElementCount(_rQueryPool.type);
