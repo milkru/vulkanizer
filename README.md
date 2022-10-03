@@ -13,7 +13,7 @@ Rendering engine prototype made with `Vulkan 1.3`. Code is written using a [simp
 * Window handling with [glfw](https://github.com/glfw/glfw)
 * Mesh loading with [fast_obj](https://github.com/thisistherk/fast_obj)
 * Mesh optimizations with [meshoptimizer](https://github.com/zeux/meshoptimizer)
-* GPU memory allocator with [VMA](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
+* GPU memory allocator with [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
 * CPU profiling with [easy_profiler](https://github.com/yse/easy_profiler)
 * GPU profiling with query timestamps and pipeline statistics
 * Custom [Dear ImGui](https://github.com/ocornut/imgui) Vulkan backend with *Performance* and *Settings* windows
