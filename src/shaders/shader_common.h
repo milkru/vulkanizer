@@ -8,7 +8,7 @@
 struct Vertex
 {
 	float16_t position[3];
-	uint8_t normal[2];
+	uint8_t normal[4];
 	float16_t texCoord[2];
 };
 

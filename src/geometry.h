@@ -3,7 +3,7 @@
 struct Vertex
 {
 	uint16_t position[3];
-	uint8_t normal[2];
+	uint8_t normal[4];
 	uint16_t texCoord[2];
 };
 

@@ -25,21 +25,22 @@ void main()
 		vertices[gl_VertexIndex].position[0],
 		vertices[gl_VertexIndex].position[1],
 		vertices[gl_VertexIndex].position[2]);
+		
+	vec4 worldPosition = perDrawData.model * vec4(position, 1.0);
 
-	vec2 normalXY = vec2(
+	vec3 normal = vec3(
 		int(vertices[gl_VertexIndex].normal[0]),
-		int(vertices[gl_VertexIndex].normal[1])) / 127.0 - 1.0;
-
-	// Reconstruct normal vector Z component.
-	// https://aras-p.info/texts/CompactNormalStorage.html
-	float normalZ = max(/*epsilon*/ 1e-06, sqrt(1.0 - dot(normalXY, normalXY)));
-	vec3 normal = mat3(perDrawData.model) * normalize(vec3(normalXY, normalZ));
+		int(vertices[gl_VertexIndex].normal[1]),
+		int(vertices[gl_VertexIndex].normal[2])) / 127.0 - 1.0;
+		
+	normal = mat3(perDrawData.model) * normalize(normal);
 
 	vec2 texCoord = vec2(
 		vertices[gl_VertexIndex].texCoord[0],
 		vertices[gl_VertexIndex].texCoord[1]);
 		
-    gl_Position = perFrameData.viewProjection * perDrawData.model * vec4(position, 1.0);
+    gl_Position = perFrameData.viewProjection * worldPosition;
 	
-    outColor = 0.5 + 0.5 * normal;
+	float shade = dot(normal, normalize(perFrameData.cameraPosition - worldPosition.xyz));
+    outColor = shade * (0.5 + 0.5 * normal);
 }

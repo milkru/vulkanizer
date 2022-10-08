@@ -46,6 +46,7 @@ static Vertex quantizeVertex(
 
 	vertex.normal[0] = uint8_t(meshopt_quantizeUnorm(_rawVertex.normal[0], 8));
 	vertex.normal[1] = uint8_t(meshopt_quantizeUnorm(_rawVertex.normal[1], 8));
+	vertex.normal[2] = uint8_t(meshopt_quantizeUnorm(_rawVertex.normal[2], 8));
 
 	// TODO-MILKRU: To unorm.
 	vertex.texCoord[0] = meshopt_quantizeHalf(_rawVertex.texCoord[0]);
@@ -103,6 +104,7 @@ void loadMesh(
 		// See Wicked engine article about this.
 		vertex.normal[0] = 0.5f + 0.5f * objMesh->normals[3 * size_t(vertexIndex.n) + 0];
 		vertex.normal[1] = 0.5f + 0.5f * objMesh->normals[3 * size_t(vertexIndex.n) + 1];
+		vertex.normal[2] = 0.5f + 0.5f * objMesh->normals[3 * size_t(vertexIndex.n) + 2];
 
 		vertex.texCoord[0] = objMesh->texcoords[2 * size_t(vertexIndex.t) + 0];
 		vertex.texCoord[1] = objMesh->texcoords[2 * size_t(vertexIndex.t) + 1];
