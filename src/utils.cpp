@@ -1,9 +1,8 @@
-#include "common.h"
 #include "utils.h"
 
 #include <stdio.h>
 
-std::vector<uint8_t> readFile(
+std::vector<char> readFile(
 	const char* _pFilePath)
 {
 	FILE* file = fopen(_pFilePath, "rb");
@@ -13,29 +12,42 @@ std::vector<uint8_t> readFile(
 	size_t fileSize = ftell(file);
 	fseek(file, 0L, SEEK_SET);
 
-	std::vector<uint8_t> fileContents(fileSize);
-	size_t bytesToRead = fread(fileContents.data(), sizeof(uint8_t), fileSize, file);
+	std::vector<char> fileContents(fileSize);
+	size_t bytesToRead = fread(fileContents.data(), sizeof(u8), fileSize, file);
 	fclose(file);
 
 	return fileContents;
 }
 
-glm::mat4 getInfinitePerspectiveMatrix(
-	float _fov,
-	float _aspect,
-	float _near)
+m4 getInfinitePerspectiveMatrix(
+	f32 _fov,
+	f32 _aspect,
+	f32 _near)
 {
-	float f = 1.0f / tanf(_fov / 2.0f);
-	return glm::mat4(
+	f32 f = 1.0f / tanf(_fov / 2.0f);
+	return m4(
 		f / _aspect, 0.0f, 0.0f, 0.0f,
 		0.0f, -f, 0.0f, 0.0f,
 		0.0f, 0.0f, 0.0f, -1.0f,
 		0.0f, 0.0f, _near, 0.0f);
 }
 
-uint32_t divideRoundingUp(
-	uint32_t _dividend,
-	uint32_t _divisor)
+u32 divideRoundingUp(
+	u32 _dividend,
+	u32 _divisor)
 {
 	return (_dividend + _divisor - 1) / _divisor;
+}
+
+u32 roundUpToPowerOfTwo(
+	f32 _value)
+{
+	f32 valueBase = glm::log2(_value);
+
+	if (glm::fract(valueBase) == 0.0f)
+	{
+		return _value;
+	}
+
+	return glm::pow(2.0f, glm::trunc(valueBase + 1.0f));
 }

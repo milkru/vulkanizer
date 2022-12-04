@@ -2,9 +2,9 @@
 
 struct WindowDesc
 {
-	uint32_t width = 0u;
-	uint32_t height = 0u;
-	const char* title = "Unknown Title";
+	u32 width = 0u;				          // Window width in pixels.
+	u32 height = 0u;				      // Window height in pixels.
+	const char* title = "Unknown Title";  // Window top bar title.
 };
 
 GLFWwindow* createWindow(

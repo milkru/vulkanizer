@@ -1,4 +1,3 @@
-#include "common.h"
 #include "device.h"
 #include "shader.h"
 #include "buffer.h"
@@ -23,20 +22,20 @@ static bool tryUpdateBindingShaderStage(
 }
 
 static std::vector<VkDescriptorSetLayoutBinding> mergeSetLayoutBindings(
-	Shaders _shaders)
+	Shaders& _rShaders)
 {
 	std::vector<VkDescriptorSetLayoutBinding> mergedLayoutBindings;
 
-	for (const Shader& shader : _shaders)
+	for (const Shader& rShader : _rShaders)
 	{
-		for (const VkDescriptorSetLayoutBinding& layoutBinding : shader.layoutBindings)
+		for (const VkDescriptorSetLayoutBinding& rLayoutBinding : rShader.layoutBindings)
 		{
-			if (tryUpdateBindingShaderStage(mergedLayoutBindings, layoutBinding))
+			if (tryUpdateBindingShaderStage(mergedLayoutBindings, rLayoutBinding))
 			{
 				continue;
 			}
 
-			mergedLayoutBindings.push_back(layoutBinding);
+			mergedLayoutBindings.push_back(rLayoutBinding);
 		}
 	}
 
@@ -44,25 +43,25 @@ static std::vector<VkDescriptorSetLayoutBinding> mergeSetLayoutBindings(
 }
 
 static VkPushConstantRange mergePushConstants(
-	Shaders _shaders)
+	Shaders& _rShaders)
 {
 	VkPushConstantRange mergedPushConstants{};
 
-	for (const Shader& shader : _shaders)
+	for (const Shader& rShader : _rShaders)
 	{
-		if (shader.pushConstants.stageFlags != 0)
+		if (rShader.pushConstants.stageFlags != 0)
 		{
 			if (mergedPushConstants.stageFlags == 0)
 			{
 				mergedPushConstants = {
-					.offset = shader.pushConstants.offset,
-					.size = shader.pushConstants.size };
+					.offset = rShader.pushConstants.offset,
+					.size = rShader.pushConstants.size };
 			}
 
-			assert(mergedPushConstants.offset == shader.pushConstants.offset);
-			assert(mergedPushConstants.size == shader.pushConstants.size);
+			assert(mergedPushConstants.offset == rShader.pushConstants.offset);
+			assert(mergedPushConstants.size == rShader.pushConstants.size);
 
-			mergedPushConstants.stageFlags |= shader.pushConstants.stageFlags;
+			mergedPushConstants.stageFlags |= rShader.pushConstants.stageFlags;
 		}
 	}
 
@@ -75,7 +74,7 @@ static VkDescriptorSetLayout createDescriptorSetLayout(
 {
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
 	descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-	descriptorSetLayoutCreateInfo.bindingCount = uint32_t(_bindings.size());
+	descriptorSetLayoutCreateInfo.bindingCount = u32(_bindings.size());
 	descriptorSetLayoutCreateInfo.pBindings = _bindings.data();
 
 	VkDescriptorSetLayout descriptorSetLayout;
@@ -109,7 +108,7 @@ static VkDescriptorUpdateTemplate createDescriptorUpdateTemplate(
 	std::vector<VkDescriptorSetLayoutBinding> _bindings)
 {
 	std::vector<VkDescriptorUpdateTemplateEntry> entries(_bindings.size());
-	for (uint32_t descriptorIndex = 0; descriptorIndex < _bindings.size(); ++descriptorIndex)
+	for (u32 descriptorIndex = 0; descriptorIndex < _bindings.size(); ++descriptorIndex)
 	{
 		VkDescriptorSetLayoutBinding binding = _bindings[descriptorIndex];
 		VkDescriptorUpdateTemplateEntry& entry = entries[descriptorIndex];
@@ -123,7 +122,7 @@ static VkDescriptorUpdateTemplate createDescriptorUpdateTemplate(
 	}
 
 	VkDescriptorUpdateTemplateCreateInfo descriptorUpdateTemplateCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO };
-	descriptorUpdateTemplateCreateInfo.descriptorUpdateEntryCount = uint32_t(entries.size());
+	descriptorUpdateTemplateCreateInfo.descriptorUpdateEntryCount = u32(entries.size());
 	descriptorUpdateTemplateCreateInfo.pDescriptorUpdateEntries = entries.data();
 	descriptorUpdateTemplateCreateInfo.templateType = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR;
 	descriptorUpdateTemplateCreateInfo.descriptorSetLayout = _descriptorSetLayout;
@@ -144,12 +143,12 @@ static VkPipeline createGraphicsPipeline(
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStageCreateInfos;
 	shaderStageCreateInfos.reserve(_desc.shaders.size());
 
-	for (const Shader& shader : _desc.shaders)
+	for (const Shader& rShader : _desc.shaders)
 	{
 		VkPipelineShaderStageCreateInfo shaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-		shaderStageCreateInfo.stage = VkShaderStageFlagBits(shader.stage);
-		shaderStageCreateInfo.module = shader.resource;
-		shaderStageCreateInfo.pName = shader.pEntry;
+		shaderStageCreateInfo.stage = VkShaderStageFlagBits(rShader.stage);
+		shaderStageCreateInfo.module = rShader.resource;
+		shaderStageCreateInfo.pName = rShader.pEntry;
 
 		shaderStageCreateInfos.push_back(shaderStageCreateInfo);
 	}
@@ -169,8 +168,8 @@ static VkPipeline createGraphicsPipeline(
 	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizationStateCreateInfo.lineWidth = 1.0f;
-	rasterizationStateCreateInfo.cullMode = _desc.rasterizationState.cullMode;
-	rasterizationStateCreateInfo.frontFace = _desc.rasterizationState.frontFace;
+	rasterizationStateCreateInfo.cullMode = _desc.rasterization.cullMode;
+	rasterizationStateCreateInfo.frontFace = _desc.rasterization.frontFace;
 	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE;
 
 	VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
@@ -178,19 +177,19 @@ static VkPipeline createGraphicsPipeline(
 	multisampleStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-	depthStencilStateCreateInfo.depthTestEnable = _desc.depthStencilState.depthTestEnable;
-	depthStencilStateCreateInfo.depthWriteEnable = _desc.depthStencilState.depthWriteEnable;
-	depthStencilStateCreateInfo.depthCompareOp = _desc.depthStencilState.depthCompareOp;
+	depthStencilStateCreateInfo.depthTestEnable = _desc.depthStencil.bDepthTestEnable;
+	depthStencilStateCreateInfo.depthWriteEnable = _desc.depthStencil.bDepthWriteEnable;
+	depthStencilStateCreateInfo.depthCompareOp = _desc.depthStencil.depthCompareOp;
 	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
 	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
 
 	std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
-	colorBlendAttachments.reserve(_desc.attachmentLayout.colorAttachmentStates.size());
+	colorBlendAttachments.reserve(_desc.attachmentLayout.colorAttachments.size());
 
-	for (ColorAttachmentState colorAttachmentState : _desc.attachmentLayout.colorAttachmentStates)
+	for (ColorAttachmentDesc colorAttachmentState : _desc.attachmentLayout.colorAttachments)
 	{
 		colorBlendAttachments.push_back({
-			.blendEnable = colorAttachmentState.blendEnable,
+			.blendEnable = colorAttachmentState.bBlendEnable,
 			.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
 			.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
 			.colorBlendOp = VK_BLEND_OP_ADD,
@@ -203,7 +202,7 @@ static VkPipeline createGraphicsPipeline(
 	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
 	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
 	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
-	colorBlendStateCreateInfo.attachmentCount = uint32_t(colorBlendAttachments.size());
+	colorBlendStateCreateInfo.attachmentCount = u32(colorBlendAttachments.size());
 	colorBlendStateCreateInfo.pAttachments = colorBlendAttachments.data();
 
 	VkDynamicState dynamicStates[] =
@@ -217,20 +216,20 @@ static VkPipeline createGraphicsPipeline(
 	dynamicStateCreateInfo.pDynamicStates = dynamicStates;
 
 	std::vector<VkFormat> colorFormats;
-	colorFormats.reserve(_desc.attachmentLayout.colorAttachmentStates.size());
+	colorFormats.reserve(_desc.attachmentLayout.colorAttachments.size());
 
-	for (ColorAttachmentState colorAttachmentState : _desc.attachmentLayout.colorAttachmentStates)
+	for (ColorAttachmentDesc colorAttachmentState : _desc.attachmentLayout.colorAttachments)
 	{
 		colorFormats.push_back(colorAttachmentState.format);
 	}
 
 	VkPipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR };
-	pipelineRenderingCreateInfo.colorAttachmentCount = uint32_t(colorFormats.size());
+	pipelineRenderingCreateInfo.colorAttachmentCount = u32(colorFormats.size());
 	pipelineRenderingCreateInfo.pColorAttachmentFormats = colorFormats.data();
 	pipelineRenderingCreateInfo.depthAttachmentFormat = _desc.attachmentLayout.depthStencilFormat;
 
 	VkGraphicsPipelineCreateInfo pipelineCreateInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-	pipelineCreateInfo.stageCount = uint32_t(shaderStageCreateInfos.size());
+	pipelineCreateInfo.stageCount = u32(shaderStageCreateInfos.size());
 	pipelineCreateInfo.pStages = shaderStageCreateInfos.data();
 	pipelineCreateInfo.pVertexInputState = &vertexInputStateCreateInfo;
 	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyStateCreateInfo;
@@ -256,14 +255,14 @@ static VkPipeline createGraphicsPipeline(
 static VkPipeline createComputePipeline(
 	VkDevice _device,
 	VkPipelineLayout _pipelineLayout,
-	Shader _computeShader)
+	Shader& _rComputeShader)
 {
-	assert(_computeShader.stage == VK_SHADER_STAGE_COMPUTE_BIT);
+	assert(_rComputeShader.stage == VK_SHADER_STAGE_COMPUTE_BIT);
 
 	VkPipelineShaderStageCreateInfo shaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 	shaderStageCreateInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	shaderStageCreateInfo.module = _computeShader.resource;
-	shaderStageCreateInfo.pName = _computeShader.pEntry;
+	shaderStageCreateInfo.module = _rComputeShader.resource;
+	shaderStageCreateInfo.pName = _rComputeShader.pEntry;
 
 	VkComputePipelineCreateInfo computePipelineCreateInfo = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
 	computePipelineCreateInfo.stage = shaderStageCreateInfo;
@@ -276,7 +275,7 @@ static VkPipeline createComputePipeline(
 }
 
 static Pipeline createPipeline(
-	Device _device,
+	Device& _rDevice,
 	VkPipelineBindPoint _bindPoint,
 	Shaders _shaders,
 	LAMBDA(Pipeline&) _callback)
@@ -289,13 +288,13 @@ static Pipeline createPipeline(
 		.pushConstants = pushConstants };
 
 	pipeline.setLayout = createDescriptorSetLayout(
-		_device.device, layoutBindings);
+		_rDevice.device, layoutBindings);
 
 	pipeline.pipelineLayout = createPipelineLayout(
-		_device.device, pipeline.setLayout, pushConstants);
+		_rDevice.device, pipeline.setLayout, pushConstants);
 
 	pipeline.updateTemplate = createDescriptorUpdateTemplate(
-		_device.device, pipeline.setLayout, pipeline.pipelineLayout, pipeline.type, layoutBindings);
+		_rDevice.device, pipeline.setLayout, pipeline.pipelineLayout, pipeline.type, layoutBindings);
 
 	_callback(pipeline);
 
@@ -303,35 +302,33 @@ static Pipeline createPipeline(
 }
 
 Pipeline createGraphicsPipeline(
-	Device _device,
+	Device& _rDevice,
 	GraphicsPipelineDesc _desc)
 {
-	return createPipeline(_device, VK_PIPELINE_BIND_POINT_GRAPHICS, _desc.shaders,
+	return createPipeline(_rDevice, VK_PIPELINE_BIND_POINT_GRAPHICS, _desc.shaders,
 		[&](Pipeline& _pipeline)
 		{
-			_pipeline.pipeline = createGraphicsPipeline(_device.device, _pipeline.pipelineLayout, _desc);
+			_pipeline.pipeline = createGraphicsPipeline(_rDevice.device, _pipeline.pipelineLayout, _desc);
 		});
 }
 
 Pipeline createComputePipeline(
-	Device _device,
-	Shader _shader)
+	Device& _rDevice,
+	Shader& _rShader)
 {
-	return createPipeline(_device, VK_PIPELINE_BIND_POINT_COMPUTE, { _shader },
+	return createPipeline(_rDevice, VK_PIPELINE_BIND_POINT_COMPUTE, { _rShader },
 		[&](Pipeline& _pipeline)
 		{
-			_pipeline.pipeline = createComputePipeline(_device.device, _pipeline.pipelineLayout, { _shader });
+			_pipeline.pipeline = createComputePipeline(_rDevice.device, _pipeline.pipelineLayout, { _rShader });
 		});
 }
 
 void destroyPipeline(
-	Device _device,
+	Device& _rDevice,
 	Pipeline& _rPipeline)
 {
-	vkDestroyPipeline(_device.device, _rPipeline.pipeline, nullptr);
-	vkDestroyDescriptorUpdateTemplate(_device.device, _rPipeline.updateTemplate, nullptr);
-	vkDestroyPipelineLayout(_device.device, _rPipeline.pipelineLayout, nullptr);
-	vkDestroyDescriptorSetLayout(_device.device, _rPipeline.setLayout, nullptr);
-
-	_rPipeline = {};
+	vkDestroyPipeline(_rDevice.device, _rPipeline.pipeline, nullptr);
+	vkDestroyDescriptorUpdateTemplate(_rDevice.device, _rPipeline.updateTemplate, nullptr);
+	vkDestroyPipelineLayout(_rDevice.device, _rPipeline.pipelineLayout, nullptr);
+	vkDestroyDescriptorSetLayout(_rDevice.device, _rPipeline.setLayout, nullptr);
 }

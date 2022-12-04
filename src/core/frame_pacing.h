@@ -1,6 +1,6 @@
 #pragma once
 
-const uint32_t kMaxFramesInFlightCount = 2u;
+const u32 kMaxFramesInFlightCount = 2u;
 
 struct FramePacingState
 {
@@ -10,8 +10,8 @@ struct FramePacingState
 };
 
 FramePacingState createFramePacingState(
-	Device _device);
+	Device& _rDevice);
 
 void destroyFramePacingState(
-	Device _device,
+	Device& _rDevice,
 	FramePacingState& _rFramePacingState);

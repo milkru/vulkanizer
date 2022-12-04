@@ -1,4 +1,3 @@
-#include "common.h"
 #include "device.h"
 #include "frame_pacing.h"
 
@@ -26,21 +25,21 @@ static VkFence createFence(
 }
 
 FramePacingState createFramePacingState(
-	Device _device)
+	Device& _rDevice)
 {
 	return {
-		.imageAvailableSemaphore = createSemaphore(_device.device),
-		.renderFinishedSemaphore = createSemaphore(_device.device),
-		.inFlightFence = createFence(_device.device) };
+		.imageAvailableSemaphore = createSemaphore(_rDevice.device),
+		.renderFinishedSemaphore = createSemaphore(_rDevice.device),
+		.inFlightFence = createFence(_rDevice.device) };
 }
 
 void destroyFramePacingState(
-	Device _device,
+	Device& _rDevice,
 	FramePacingState& _rFramePacingState)
 {
-	vkDestroySemaphore(_device.device, _rFramePacingState.renderFinishedSemaphore, nullptr);
-	vkDestroySemaphore(_device.device, _rFramePacingState.imageAvailableSemaphore, nullptr);
-	vkDestroyFence(_device.device, _rFramePacingState.inFlightFence, nullptr);
+	vkDestroySemaphore(_rDevice.device, _rFramePacingState.renderFinishedSemaphore, nullptr);
+	vkDestroySemaphore(_rDevice.device, _rFramePacingState.imageAvailableSemaphore, nullptr);
+	vkDestroyFence(_rDevice.device, _rFramePacingState.inFlightFence, nullptr);
 
 	_rFramePacingState = {};
 }

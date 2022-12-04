@@ -2,54 +2,49 @@
 
 struct Vertex
 {
-	uint16_t position[3];
-	uint8_t normal[4];
-	uint16_t texCoord[2];
+	u16 position[3];
+	u8 normal[4];
+	u16 texCoord[2];
 };
 
 struct Meshlet
 {
-	uint32_t vertexOffset;
-	uint32_t triangleOffset;
-	uint32_t vertexCount;
-	uint32_t triangleCount;
+	u32 vertexOffset;
+	u32 triangleOffset;
+	u32 vertexCount;
+	u32 triangleCount;
 
-	float center[3];
-	float radius;
-
-	int8_t coneAxis[3];
-	int8_t coneCutoff;
+	f32 center[3];
+	f32 radius;
+	i8 coneAxis[3];
+	i8 coneCutoff;
 };
 
 struct MeshLod
 {
-	uint32_t indexCount;
-	uint32_t firstIndex;
-
-	uint32_t meshletOffset;
-	uint32_t meshletCount;
+	u32 indexCount;
+	u32 firstIndex;
+	u32 meshletOffset;
+	u32 meshletCount;
 };
 
 struct Mesh
 {
-	uint32_t vertexOffset;
-
-	float center[3];
-	float radius;
-
-	uint32_t lodCount;
+	u32 vertexOffset;
+	f32 center[3];
+	f32 radius;
+	u32 lodCount;
 	MeshLod lods[kMaxMeshLods];
 };
 
 struct Geometry
 {
 	std::vector<Meshlet> meshlets;
-	std::vector<uint32_t> meshletVertices;
-	std::vector<uint8_t> meshletTriangles;
+	std::vector<u32> meshletVertices;
+	std::vector<u8> meshletTriangles;
 
 	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
-
+	std::vector<u32> indices;
 	std::vector<Mesh> meshes;
 };
 
@@ -63,7 +58,7 @@ struct GeometryBuffers
 	Buffer meshesBuffer{};
 };
 
-void loadMesh(
-	Geometry& _rGeometry,
-	const char* _pFilePath,
-	bool _bMeshShadingSupported);
+GeometryBuffers createGeometryBuffers(
+	Device& _rDevice,
+	u32 _meshCount,
+	const char** _meshPaths);

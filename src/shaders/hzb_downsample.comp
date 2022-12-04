@@ -1,0 +1,25 @@
+#version 450
+
+#include "shader_constants.h"
+
+layout(local_size_x = kShaderGroupSizeNV) in;
+layout(local_size_y = kShaderGroupSizeNV) in;
+layout(local_size_z = 1) in;
+
+layout (binding = 0) uniform sampler2D inputTexture;
+layout (binding = 1, r16f) writeonly uniform image2D outputTexture;
+
+layout (push_constant) uniform block
+{
+    uint hzbMipSize;
+};
+
+void main()
+{
+	ivec2 position = min(ivec2(gl_GlobalInvocationID.xy), ivec2(hzbMipSize - 1)); 
+
+	vec2 uv = (0.5 + vec2(position)) / float(hzbMipSize);
+	vec4 depth = texture(inputTexture, uv);
+
+	imageStore(outputTexture, position, depth);
+}

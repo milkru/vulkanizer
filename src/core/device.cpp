@@ -1,4 +1,3 @@
-#include "common.h"
 #include "device.h"
 #include "window.h"
 
@@ -16,14 +15,17 @@ static VkInstance createInstance(
 	const char* instanceExtensions[] =
 	{
 		"VK_KHR_surface",
+
 #ifdef _WIN32
 		"VK_KHR_win32_surface",
 #elif __linux__
 		"VK_KHR_xcb_surface",
-#endif
+#endif // _WIN32 __linux__
+
 #ifdef DEBUG_
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-#endif
+#endif // DEBUG_
+
 		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
 	};
 
@@ -45,6 +47,16 @@ static VkInstance createInstance(
 
 	instanceCreateInfo.enabledExtensionCount = ARRAY_SIZE(instanceExtensions);
 	instanceCreateInfo.ppEnabledExtensionNames = instanceExtensions;
+
+#ifdef DEBUG_
+	VkValidationFeatureEnableEXT enabledValidationFeatures[] = { VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT };
+
+	VkValidationFeaturesEXT validationFeatures = { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
+	validationFeatures.enabledValidationFeatureCount = ARRAY_SIZE(enabledValidationFeatures);
+	validationFeatures.pEnabledValidationFeatures = enabledValidationFeatures;
+
+	instanceCreateInfo.pNext = &validationFeatures;
+#endif // DEBUG_
 
 	VkInstance instance;
 	VK_CALL(vkCreateInstance(&instanceCreateInfo, nullptr, &instance));
@@ -101,16 +113,16 @@ static VkSurfaceKHR createSurface(
 	return surface;
 }
 
-static uint32_t tryGetGraphicsQueueFamilyIndex(
+static u32 tryGetGraphicsQueueFamilyIndex(
 	VkPhysicalDevice _physicalDevice)
 {
-	uint32_t queueCount = 0;
+	u32 queueCount = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &queueCount, 0);
 
 	std::vector<VkQueueFamilyProperties> queueProperties(queueCount);
 	vkGetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &queueCount, queueProperties.data());
 
-	for (uint32_t queueIndex = 0; queueIndex < queueCount; ++queueIndex)
+	for (u32 queueIndex = 0; queueIndex < queueCount; ++queueIndex)
 	{
 		if (queueProperties[queueIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT)
 		{
@@ -130,12 +142,12 @@ static const char* kRequiredDeviceExtensions[] =
 };
 
 static bool isDeviceExtensionAvailable(
-	const std::vector<VkExtensionProperties>& _availableExtensions,
+	std::vector<VkExtensionProperties>& _availableExtensions,
 	const char* _extensionName)
 {
-	for (const VkExtensionProperties& availableExtension : _availableExtensions)
+	for (VkExtensionProperties& rAvailableExtension : _availableExtensions)
 	{
-		if (strcmp(availableExtension.extensionName, _extensionName) == 0)
+		if (strcmp(rAvailableExtension.extensionName, _extensionName) == 0)
 		{
 			return true;
 		}
@@ -144,17 +156,18 @@ static bool isDeviceExtensionAvailable(
 	return false;
 }
 
-static bool areRequiredDeviceExtensionSupported(const VkPhysicalDevice inDevice)
+static bool areRequiredDeviceExtensionSupported(
+	VkPhysicalDevice _physicalDevice)
 {
-	uint32_t extensionCount;
-	vkEnumerateDeviceExtensionProperties(inDevice, nullptr, &extensionCount, nullptr);
+	u32 extensionCount;
+	vkEnumerateDeviceExtensionProperties(_physicalDevice, nullptr, &extensionCount, nullptr);
 
 	std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-	vkEnumerateDeviceExtensionProperties(inDevice, nullptr, &extensionCount, availableExtensions.data());
+	vkEnumerateDeviceExtensionProperties(_physicalDevice, nullptr, &extensionCount, availableExtensions.data());
 
-	for (const char* requiredExtensionName : kRequiredDeviceExtensions)
+	for (const char* pRequiredExtensionName : kRequiredDeviceExtensions)
 	{
-		if (!isDeviceExtensionAvailable(availableExtensions, requiredExtensionName))
+		if (!isDeviceExtensionAvailable(availableExtensions, pRequiredExtensionName))
 		{
 			return false;
 		}
@@ -167,7 +180,7 @@ static VkPhysicalDevice tryPickPhysicalDevice(
 	VkInstance _instance,
 	VkSurfaceKHR _surface)
 {
-	uint32_t physicalDeviceCount = 0;
+	u32 physicalDeviceCount = 0;
 	vkEnumeratePhysicalDevices(_instance, &physicalDeviceCount, nullptr);
 
 	if (physicalDeviceCount == 0)
@@ -181,7 +194,7 @@ static VkPhysicalDevice tryPickPhysicalDevice(
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	for (VkPhysicalDevice potentialPhysicalDevice : physicalDevices)
 	{
-		uint32_t graphicsQueueIndex = tryGetGraphicsQueueFamilyIndex(potentialPhysicalDevice);
+		u32 graphicsQueueIndex = tryGetGraphicsQueueFamilyIndex(potentialPhysicalDevice);
 		if (graphicsQueueIndex == ~0u)
 		{
 			continue;
@@ -209,7 +222,7 @@ static VkPhysicalDevice tryPickPhysicalDevice(
 static bool isMeshShadingPipelineSupported(
 	VkPhysicalDevice _physicalDevice)
 {
-	uint32_t extensionCount;
+	u32 extensionCount;
 
 	vkEnumerateDeviceExtensionProperties(_physicalDevice, nullptr, &extensionCount, nullptr);
 	std::vector<VkExtensionProperties> extensions(extensionCount);
@@ -228,7 +241,7 @@ static bool isMeshShadingPipelineSupported(
 
 static VkDevice createDevice(
 	VkPhysicalDevice _physicalDevice,
-	uint32_t _queueFamilyIndex,
+	u32 _queueFamilyIndex,
 	bool _bMeshShadingAllowed)
 {
 	std::vector<const char*> deviceExtensions(kRequiredDeviceExtensions, std::end(kRequiredDeviceExtensions));
@@ -237,7 +250,7 @@ static VkDevice createDevice(
 		deviceExtensions.push_back(VK_NV_MESH_SHADER_EXTENSION_NAME);
 	}
 
-	float queuePriority = 1.0f;
+	f32 queuePriority = 1.0f;
 	VkDeviceQueueCreateInfo queueCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
 	queueCreateInfo.queueFamilyIndex = _queueFamilyIndex;
 	queueCreateInfo.queueCount = 1;
@@ -258,6 +271,7 @@ static VkDevice createDevice(
 	deviceFeatures12.shaderFloat16 = VK_TRUE;
 	deviceFeatures12.shaderInt8 = VK_TRUE;
 	deviceFeatures12.drawIndirectCount = VK_TRUE;
+	deviceFeatures12.samplerFilterMinmax = VK_TRUE;
 
 	VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR };
 	dynamicRenderingFeatures.dynamicRendering = VK_TRUE;
@@ -338,7 +352,7 @@ static VmaAllocator createAllocator(
 
 static VkCommandPool createCommandPool(
 	VkDevice _device,
-	uint32_t _queueFamilyIndex)
+	u32 _queueFamilyIndex)
 {
 	VkCommandPoolCreateInfo commandPoolCreateInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
 	commandPoolCreateInfo.queueFamilyIndex = _queueFamilyIndex;
@@ -401,24 +415,24 @@ void destroyDevice(
 }
 
 VkCommandBuffer createCommandBuffer(
-	Device _device)
+	Device& _rDevice)
 {
 	VkCommandBufferAllocateInfo allocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-	allocateInfo.commandPool = _device.commandPool;
+	allocateInfo.commandPool = _rDevice.commandPool;
 	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocateInfo.commandBufferCount = 1;
 
 	VkCommandBuffer commandBuffer;
-	VK_CALL(vkAllocateCommandBuffers(_device.device, &allocateInfo, &commandBuffer));
+	VK_CALL(vkAllocateCommandBuffers(_rDevice.device, &allocateInfo, &commandBuffer));
 
 	return commandBuffer;
 }
 
 void immediateSubmit(
-	Device _device,
+	Device& _rDevice,
 	LAMBDA(VkCommandBuffer) _callback)
 {
-	VkCommandBuffer commandBuffer = createCommandBuffer(_device);
+	VkCommandBuffer commandBuffer = createCommandBuffer(_rDevice);
 
 	VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -433,8 +447,8 @@ void immediateSubmit(
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffer;
 
-	VK_CALL(vkQueueSubmit(_device.graphicsQueue.queue, 1, &submitInfo, VK_NULL_HANDLE));
-	VK_CALL(vkQueueWaitIdle(_device.graphicsQueue.queue));
+	VK_CALL(vkQueueSubmit(_rDevice.graphicsQueue.queue, 1, &submitInfo, VK_NULL_HANDLE));
+	VK_CALL(vkQueueWaitIdle(_rDevice.graphicsQueue.queue));
 
-	vkFreeCommandBuffers(_device.device, _device.commandPool, 1, &commandBuffer);
+	vkFreeCommandBuffers(_rDevice.device, _rDevice.commandPool, 1, &commandBuffer);
 }

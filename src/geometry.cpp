@@ -1,6 +1,6 @@
-#include "common.h"
-#include "device.h"
-#include "buffer.h"
+#include "core/device.h"
+#include "core/buffer.h"
+
 #include "shaders/shader_constants.h"
 #include "geometry.h"
 
@@ -9,48 +9,48 @@
 
 struct RawVertex
 {
-	float position[3];
-	float normal[3];
-	float texCoord[2];
+	f32 position[3];
+	f32 normal[3];
+	f32 texCoord[2];
 };
 
 // TODO-MILKRU: Implement a more conservative way of calculating bounding sphere?
-static glm::vec4 calculateMeshBounds(
+static v4 calculateMeshBounds(
 	std::vector<RawVertex>& _rVertices)
 {
-	glm::vec4 meshBounds(0.0f);
+	v4 meshBounds(0.0f);
 	for (RawVertex& vertex : _rVertices)
 	{
-		meshBounds += glm::vec4(vertex.position[0], vertex.position[1], vertex.position[2], 0.0f);
+		meshBounds += v4(vertex.position[0], vertex.position[1], vertex.position[2], 0.0f);
 	}
-	meshBounds /= float(_rVertices.size());
+	meshBounds /= f32(_rVertices.size());
 
 	for (RawVertex& vertex : _rVertices)
 	{
-		meshBounds.w = glm::max(meshBounds.w, glm::distance(glm::vec3(meshBounds),
-			glm::vec3(vertex.position[0], vertex.position[1], vertex.position[2])));
+		meshBounds.w = glm::max(meshBounds.w, glm::distance(v3(meshBounds),
+			v3(vertex.position[0], vertex.position[1], vertex.position[2])));
 	}
 
 	return meshBounds;
 }
 
 static Vertex quantizeVertex(
-	const RawVertex& _rawVertex)
+	RawVertex& _rRawVertex)
 {
 	Vertex vertex{};
 
 	// TODO-MILKRU: To snorm.
-	vertex.position[0] = meshopt_quantizeHalf(_rawVertex.position[0]);
-	vertex.position[1] = meshopt_quantizeHalf(_rawVertex.position[1]);
-	vertex.position[2] = meshopt_quantizeHalf(_rawVertex.position[2]);
+	vertex.position[0] = meshopt_quantizeHalf(_rRawVertex.position[0]);
+	vertex.position[1] = meshopt_quantizeHalf(_rRawVertex.position[1]);
+	vertex.position[2] = meshopt_quantizeHalf(_rRawVertex.position[2]);
 
-	vertex.normal[0] = uint8_t(meshopt_quantizeUnorm(_rawVertex.normal[0], 8));
-	vertex.normal[1] = uint8_t(meshopt_quantizeUnorm(_rawVertex.normal[1], 8));
-	vertex.normal[2] = uint8_t(meshopt_quantizeUnorm(_rawVertex.normal[2], 8));
+	vertex.normal[0] = u8(meshopt_quantizeUnorm(_rRawVertex.normal[0], 8));
+	vertex.normal[1] = u8(meshopt_quantizeUnorm(_rRawVertex.normal[1], 8));
+	vertex.normal[2] = u8(meshopt_quantizeUnorm(_rRawVertex.normal[2], 8));
 
 	// TODO-MILKRU: To unorm.
-	vertex.texCoord[0] = meshopt_quantizeHalf(_rawVertex.texCoord[0]);
-	vertex.texCoord[1] = meshopt_quantizeHalf(_rawVertex.texCoord[1]);
+	vertex.texCoord[0] = meshopt_quantizeHalf(_rRawVertex.texCoord[0]);
+	vertex.texCoord[1] = meshopt_quantizeHalf(_rRawVertex.texCoord[1]);
 
 	return vertex;
 }
@@ -79,7 +79,7 @@ static Meshlet buildMeshlet(
 	return meshlet;
 }
 
-void loadMesh(
+static void loadMesh(
 	Geometry& _rGeometry,
 	const char* _pFilePath,
 	bool _bMeshShadingSupported)
@@ -90,7 +90,7 @@ void loadMesh(
 	std::vector<RawVertex> vertices;
 	vertices.reserve(objMesh->index_count);
 
-	for (uint32_t i = 0; i < objMesh->index_count; ++i)
+	for (u32 i = 0; i < objMesh->index_count; ++i)
 	{
 		fastObjIndex vertexIndex = objMesh->indices[i];
 
@@ -114,12 +114,12 @@ void loadMesh(
 
 	// TODO-MILKRU: All mesh preprocessing can be done offline in CMake for example.
 
-	std::vector<uint32_t> remapTable(objMesh->index_count);
+	std::vector<u32> remapTable(objMesh->index_count);
 	size_t vertexCount = meshopt_generateVertexRemap(remapTable.data(), nullptr, objMesh->index_count,
 		vertices.data(), vertices.size(), sizeof(RawVertex));
 
 	vertices.resize(vertexCount);
-	std::vector<uint32_t> indices(objMesh->index_count);
+	std::vector<u32> indices(objMesh->index_count);
 
 	meshopt_remapVertexBuffer(vertices.data(), vertices.data(), indices.size(), sizeof(RawVertex), remapTable.data());
 	meshopt_remapIndexBuffer(indices.data(), nullptr, indices.size(), remapTable.data());
@@ -128,7 +128,7 @@ void loadMesh(
 	meshopt_optimizeOverdraw(indices.data(), indices.data(), indices.size(), &vertices[0].position[0], vertices.size(), sizeof(RawVertex), /*threshold*/ 1.01f);
 	meshopt_optimizeVertexFetch(vertices.data(), indices.data(), indices.size(), vertices.data(), vertices.size(), sizeof(RawVertex));
 
-	glm::vec4 meshBounds = calculateMeshBounds(vertices);
+	v4 meshBounds = calculateMeshBounds(vertices);
 
 	Mesh mesh = {};
 	mesh.center[0] = meshBounds.x;
@@ -136,59 +136,59 @@ void loadMesh(
 	mesh.center[2] = meshBounds.z;
 	mesh.radius = meshBounds.w;
 
-	mesh.vertexOffset = uint32_t(_rGeometry.vertices.size());
+	mesh.vertexOffset = u32(_rGeometry.vertices.size());
 	_rGeometry.vertices.reserve(_rGeometry.vertices.size() + vertices.size());
 
-	for (const RawVertex& vertex : vertices)
+	for (RawVertex& rVertex : vertices)
 	{
-		_rGeometry.vertices.push_back(quantizeVertex(vertex));
+		_rGeometry.vertices.push_back(quantizeVertex(rVertex));
 	}
 
 	mesh.lodCount = 0;
 
-	for (uint32_t lodIndex = 0u; lodIndex < kMaxMeshLods; ++lodIndex)
+	for (u32 lodIndex = 0u; lodIndex < kMaxMeshLods; ++lodIndex)
 	{
-		mesh.lods[lodIndex].firstIndex = uint32_t(_rGeometry.indices.size());
-		mesh.lods[lodIndex].indexCount = uint32_t(indices.size());
+		mesh.lods[lodIndex].firstIndex = u32(_rGeometry.indices.size());
+		mesh.lods[lodIndex].indexCount = u32(indices.size());
 		_rGeometry.indices.insert(_rGeometry.indices.end(), indices.begin(), indices.end());
 
 		if (_bMeshShadingSupported)
 		{
 			size_t maxMeshlets = meshopt_buildMeshletsBound(indices.size(), kMaxVerticesPerMeshlet, kMaxTrianglesPerMeshlet);
 			std::vector<meshopt_Meshlet> meshlets(maxMeshlets);
-			std::vector<uint32_t> meshletVertices(maxMeshlets * kMaxVerticesPerMeshlet);
-			std::vector<uint8_t> meshletTriangles(maxMeshlets * kMaxTrianglesPerMeshlet * 3);
+			std::vector<u32> meshletVertices(maxMeshlets * kMaxVerticesPerMeshlet);
+			std::vector<u8> meshletTriangles(maxMeshlets * kMaxTrianglesPerMeshlet * 3);
 
 			// TODO-MILKRU: After per-meshlet frustum/occlusion culling gets implemented, try playing around with cone_weight. You might get better performance.
 			size_t meshletCount = meshopt_buildMeshlets(meshlets.data(), meshletVertices.data(), meshletTriangles.data(), indices.data(), indices.size(),
 				&vertices[0].position[0], vertices.size(), sizeof(RawVertex), kMaxVerticesPerMeshlet, kMaxTrianglesPerMeshlet, /*cone_weight*/ 0.7f);
 
-			const meshopt_Meshlet& lastMeshlet = meshlets[meshletCount - 1];
+			meshopt_Meshlet& rLastMeshlet = meshlets[meshletCount - 1];
 
-			meshletVertices.resize(lastMeshlet.vertex_offset + size_t(lastMeshlet.vertex_count));
-			meshletTriangles.resize(lastMeshlet.triangle_offset + ((size_t(lastMeshlet.triangle_count) * 3 + 3) & ~3));
+			meshletVertices.resize(rLastMeshlet.vertex_offset + size_t(rLastMeshlet.vertex_count));
+			meshletTriangles.resize(rLastMeshlet.triangle_offset + ((size_t(rLastMeshlet.triangle_count) * 3 + 3) & ~3));
 			meshlets.resize(meshletCount);
 
 			mesh.lods[lodIndex].meshletOffset = _rGeometry.meshlets.size();
 			mesh.lods[lodIndex].meshletCount = meshletCount;
 
-			uint32_t globalMeshletVerticesOffset = _rGeometry.meshletVertices.size();
-			uint32_t globalMeshletTrianglesOffset = _rGeometry.meshletTriangles.size();
+			u32 globalMeshletVerticesOffset = _rGeometry.meshletVertices.size();
+			u32 globalMeshletTrianglesOffset = _rGeometry.meshletTriangles.size();
 
 			_rGeometry.meshletVertices.insert(_rGeometry.meshletVertices.end(), meshletVertices.begin(), meshletVertices.end());
 			_rGeometry.meshletTriangles.insert(_rGeometry.meshletTriangles.end(), meshletTriangles.begin(), meshletTriangles.end());
 			_rGeometry.meshlets.reserve(_rGeometry.meshlets.size() + meshletCount);
 
-			for (uint32_t meshletIndex = 0; meshletIndex < meshlets.size(); ++meshletIndex)
+			for (u32 meshletIndex = 0; meshletIndex < meshlets.size(); ++meshletIndex)
 			{
-				meshopt_Meshlet& meshlet = meshlets[meshletIndex];
-				meshopt_Bounds bounds = meshopt_computeMeshletBounds(&meshletVertices[meshlet.vertex_offset], &meshletTriangles[meshlet.triangle_offset],
-					meshlet.triangle_count, &vertices[0].position[0], vertices.size(), sizeof(RawVertex));
+				meshopt_Meshlet& rMeshlet = meshlets[meshletIndex];
+				meshopt_Bounds bounds = meshopt_computeMeshletBounds(&meshletVertices[rMeshlet.vertex_offset], &meshletTriangles[rMeshlet.triangle_offset],
+					rMeshlet.triangle_count, &vertices[0].position[0], vertices.size(), sizeof(RawVertex));
 
-				meshlet.vertex_offset += globalMeshletVerticesOffset;
-				meshlet.triangle_offset += globalMeshletTrianglesOffset;
+				rMeshlet.vertex_offset += globalMeshletVerticesOffset;
+				rMeshlet.triangle_offset += globalMeshletTrianglesOffset;
 
-				_rGeometry.meshlets.push_back(buildMeshlet(meshlet, bounds));
+				_rGeometry.meshlets.push_back(buildMeshlet(rMeshlet, bounds));
 			}
 		}
 
@@ -199,9 +199,9 @@ void loadMesh(
 			break;
 		}
 
-		float threshold = 0.6f;
+		f32 threshold = 0.6f;
 		size_t targetIndexCount = size_t(indices.size() * threshold);
-		float targetError = 1e-2f;
+		f32 targetError = 1e-2f;
 
 		size_t newIndexCount = meshopt_simplify(indices.data(), indices.data(), indices.size(),
 			&vertices[0].position[0], vertices.size(), sizeof(RawVertex), targetIndexCount, targetError);
@@ -216,4 +216,54 @@ void loadMesh(
 	}
 
 	_rGeometry.meshes.push_back(mesh);
+}
+
+GeometryBuffers createGeometryBuffers(
+	Device& _rDevice,
+	u32 _meshCount,
+	const char** _meshPaths)
+{
+	EASY_BLOCK("InitializeGeometry");
+
+	Geometry geometry{};
+
+	for (u32 meshIndex = 0; meshIndex < _meshCount; ++meshIndex)
+	{
+		const char* meshPath = _meshPaths[meshIndex + 1];
+		loadMesh(geometry, meshPath, _rDevice.bMeshShadingPipelineAllowed);
+	}
+
+	return {
+		.meshletBuffer = _rDevice.bMeshShadingPipelineAllowed ?
+			createBuffer(_rDevice, {
+				.byteSize = sizeof(Meshlet) * geometry.meshlets.size(),
+				.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				.pContents = geometry.meshlets.data() }) : Buffer(),
+
+		.meshletVerticesBuffer = _rDevice.bMeshShadingPipelineAllowed ?
+			createBuffer(_rDevice, {
+				.byteSize = sizeof(u32) * geometry.meshletVertices.size(),
+				.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				.pContents = geometry.meshletVertices.data() }) : Buffer(),
+
+		.meshletTrianglesBuffer = _rDevice.bMeshShadingPipelineAllowed ?
+			createBuffer(_rDevice, {
+				.byteSize = sizeof(u8) * geometry.meshletTriangles.size(),
+				.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+				.pContents = geometry.meshletTriangles.data() }) : Buffer(),
+
+		.vertexBuffer = createBuffer(_rDevice, {
+			.byteSize = sizeof(Vertex) * geometry.vertices.size(),
+			.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+			.pContents = geometry.vertices.data() }),
+
+		.indexBuffer = createBuffer(_rDevice, {
+			.byteSize = sizeof(u32) * geometry.indices.size(),
+			.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+			.pContents = geometry.indices.data() }),
+
+		.meshesBuffer = createBuffer(_rDevice, {
+			.byteSize = sizeof(Mesh) * geometry.meshes.size(),
+			.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+			.pContents = geometry.meshes.data() }) };
 }

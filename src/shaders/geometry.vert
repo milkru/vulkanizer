@@ -39,7 +39,7 @@ void main()
 		vertices[gl_VertexIndex].texCoord[0],
 		vertices[gl_VertexIndex].texCoord[1]);
 		
-    gl_Position = perFrameData.viewProjection * worldPosition;
+    gl_Position = perFrameData.projection * perFrameData.view * worldPosition;
 	
 	float shade = dot(normal, normalize(perFrameData.cameraPosition - worldPosition.xyz));
     outColor = shade * (0.5 + 0.5 * normal);

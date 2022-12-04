@@ -1,13 +1,16 @@
 #pragma once
 
-std::vector<uint8_t> readFile(
+std::vector<char> readFile(
 	const char* _pFilePath);
 
-glm::mat4 getInfinitePerspectiveMatrix(
-	float _fov,
-	float _aspect,
-	float _near);
+m4 getInfinitePerspectiveMatrix(
+	f32 _fov,
+	f32 _aspect,
+	f32 _near);
 
-uint32_t divideRoundingUp(
-	uint32_t _dividend,
-	uint32_t _divisor);
+u32 divideRoundingUp(
+	u32 _dividend,
+	u32 _divisor);
+
+u32 roundUpToPowerOfTwo(
+	f32 _value);

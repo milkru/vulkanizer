@@ -1,44 +1,49 @@
 #pragma once
 
+// TODO-MILKRU: Should this stay here?
+struct Settings
+{
+	const char* deviceName = "Unknown Device";
+	std::map<std::string, f64> gpuTimes;
+	u64 inputAssemblyVertices = 0ull;
+	u64 inputAssemblyPrimitives = 0ull;
+	u64 vertexShaderInvocations = 0ull;
+	u64 clippingInvocations = 0ull;
+	u64 clippingPrimitives = 0ull;
+	u64 fragmentShaderInvocations = 0ull;
+	u64 computeShaderInvocations = 0ull;
+	i32 forcedLod = 0;
+	bool bForceMeshLodEnabled = false;
+	bool bFreezeCameraEnabled = false;
+	bool bMeshShadingPipelineSupported = false;
+	bool bMeshShadingPipelineEnabled = false;
+	bool bMeshFrustumCullingEnabled = false;
+	bool bMeshOcclusionCullingEnabled = false;
+	bool bMeshletConeCullingEnabled = false;
+	bool bMeshletFrustumCullingEnabled = false;
+};
+
 namespace gui
 {
-	struct State
-	{
-		const char* deviceName = "Unknown Device";
-		double generateDrawsGpuTime = 0.0f;
-		double geometryGpuTime = 0.0f;
-		uint64_t inputAssemblyVertices = 0ull;
-		uint64_t inputAssemblyPrimitives = 0ull;
-		uint64_t vertexShaderInvocations = 0ull;
-		uint64_t clippingInvocations = 0ull;
-		uint64_t clippingPrimitives = 0ull;
-		uint64_t fragmentShaderInvocations = 0ull;
-		uint64_t computeShaderInvocations = 0ull;
-		int32_t forcedLod = 0;
-		bool bForceMeshLodEnabled = false;
-		bool bFreezeCameraEnabled = false;
-		bool bMeshShadingPipelineSupported = false;
-		bool bMeshShadingPipelineEnabled = false;
-		bool bMeshFrustumCullingEnabled = false;
-		bool bMeshletConeCullingEnabled = false;
-		bool bMeshletFrustumCullingEnabled = false;
-	};
-
 	void initialize(
-		Device _device,
+		Device& _rDevice,
 		VkFormat _colorFormat,
 		VkFormat _depthFormat,
-		float _width,
-		float _height);
+		f32 _width,
+		f32 _height);
 
 	void terminate();
 
 	void newFrame(
 		GLFWwindow* _pWindow,
-		State& _rState);
+		Settings& _rSettings);
 
 	void drawFrame(
 		VkCommandBuffer _commandBuffer,
-		uint32_t _frameIndex,
-		Texture _attachment);
+		u32 _frameIndex,
+		Texture& _rAttachment);
+
+	void updateGpuPerformanceState(
+		VkPhysicalDeviceLimits _deviceLimits,
+		Settings& _rSettings);
 }

@@ -1,12 +1,5 @@
 #pragma once
 
-struct SwapchainDesc
-{
-	bool bEnableVSync = true;
-	uint32_t preferredSwapchainImageCount = 2;
-	VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE;
-};
-
 struct Swapchain
 {
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
@@ -15,18 +8,25 @@ struct Swapchain
 	std::vector<Texture> textures{};
 };
 
+struct SwapchainDesc
+{
+	bool bEnableVSync = true;					   // Enable vertical sync.
+	u32 preferredSwapchainImageCount = 2;	       // Preferred number of swapchain images.
+	VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE;  // [Optional] Old swapchain which can be used for faster creation.
+};
+
 Swapchain createSwapchain(
 	GLFWwindow* _pWindow,
-	Device _device,
+	Device& _rDevice,
 	SwapchainDesc _desc);
 
 void destroySwapchain(
-	Device _device,
+	Device& _rDevice,
 	Swapchain& _rSwapchain);
 
 void submitAndPresent(
 	VkCommandBuffer _commandBuffer,
-	Device _device,
+	Device& _rDevice,
 	Swapchain _swapchain,
-	uint32_t _imageIndex,
+	u32 _imageIndex,
 	FramePacingState _framePacingState);

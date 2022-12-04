@@ -7,6 +7,9 @@
 
 #include "shader_common.h"
 
+const uint kVertexLoops = (kMaxVerticesPerMeshlet + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
+const uint kTriangleLoops = (3 * kMaxTrianglesPerMeshlet + 4 * kShaderGroupSizeNV - 1) / (kShaderGroupSizeNV * 4);
+	
 layout(local_size_x = kShaderGroupSizeNV) in;
 layout(triangles, max_vertices = kMaxVerticesPerMeshlet, max_primitives = kMaxTrianglesPerMeshlet) out;
 
@@ -52,14 +55,11 @@ void main()
 	uint drawIndex = drawCommands[gl_DrawID].drawIndex;
 	PerDrawData perDrawData = perDrawDataVector[drawIndex];
 
-	// This allows loop unrolling, since vertexLoops is known at compile time.
-	const uint vertexLoops = (kMaxVerticesPerMeshlet + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
-
 	vec3 meshletColor = getRandomColor(meshletIndex);
 	uint globalVertexOffset = meshes[perDrawData.meshIndex].vertexOffset;
 
 	[[unroll]]
-	for (uint loopIndex = 0; loopIndex < vertexLoops; ++loopIndex)
+	for (uint loopIndex = 0; loopIndex < kVertexLoops; ++loopIndex)
 	{
 		uint localVertexIndex = groupThreadIndex + loopIndex * kShaderGroupSizeNV;
 		localVertexIndex = min(localVertexIndex, meshlets[meshletIndex].vertexCount - 1);
@@ -84,7 +84,7 @@ void main()
 			vertices[vertexIndex].texCoord[0],
 			vertices[vertexIndex].texCoord[1]);
 
-		gl_MeshVerticesNV[localVertexIndex].gl_Position = perFrameData.viewProjection * worldPosition;
+		gl_MeshVerticesNV[localVertexIndex].gl_Position = perFrameData.projection * perFrameData.view * worldPosition;
 		
 		float shade = dot(normal, normalize(perFrameData.cameraPosition - worldPosition.xyz));
 		outColor[localVertexIndex] = shade * (0.5 * (meshletColor + 0.5 * normal + 0.5));
@@ -93,15 +93,13 @@ void main()
 	uint packedTriangleOffset = meshlets[meshletIndex].triangleOffset / 4;
 	uint packedTrianglesMax = (3 * meshlets[meshletIndex].triangleCount - 1) / 4;
 	
-	// This allows compiler loop unrolling.
-	const uint triangleLoops = (3 * kMaxTrianglesPerMeshlet + 4 * kShaderGroupSizeNV - 1) / (kShaderGroupSizeNV * 4);
-	
 	[[unroll]]
-	for (uint loopIndex = 0; loopIndex < triangleLoops; ++loopIndex)
+	for (uint loopIndex = 0; loopIndex < kTriangleLoops; ++loopIndex)
 	{
 		uint localTriangleIndex = groupThreadIndex + loopIndex * kShaderGroupSizeNV;
 		localTriangleIndex = min(localTriangleIndex, packedTrianglesMax);
 
+		// TODO-MILKRU: subgroupAdd for triangle culling?
 		writePackedPrimitiveIndices4x8NV(4 * localTriangleIndex, meshletTriangles[packedTriangleOffset + localTriangleIndex]);
 	}
 

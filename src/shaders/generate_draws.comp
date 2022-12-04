@@ -1,9 +1,11 @@
-#version 450
+#version 460
 
 #extension GL_EXT_control_flow_attributes: require
 #extension GL_EXT_shader_8bit_storage: require
 #extension GL_EXT_shader_16bit_storage: require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_KHR_shader_subgroup_ballot: require
+#extension GL_KHR_shader_subgroup_vote: require
 
 #include "shader_common.h"
 
@@ -13,14 +15,47 @@ layout(local_size_z = 1) in;
 
 layout(binding = 0) readonly buffer Meshes { Mesh meshes[]; };
 layout(binding = 1) readonly buffer PerDrawDataVector { PerDrawData perDrawDataVector[]; };
-
 layout(binding = 2) writeonly buffer DrawCommands { DrawCommand drawCommands[]; };
-layout(binding = 3) writeonly buffer DrawCount { uint drawCount; };
+layout(binding = 3) buffer DrawCount { uint drawCount; };
+layout(binding = 4) buffer Visibility { int visibility[]; };
+layout(binding = 5) uniform sampler2D hzb;
 
 layout (push_constant) uniform block
 {
     PerFrameData perFrameData;
 };
+
+// 2D Polyhedral Bounds of a Clipped, Perspective-Projected 3D Sphere
+// https://jcgt.org/published/0002/02/05/
+bool tryCalculateSphereBounds(
+	vec3 _center,
+	float _radius,
+	float _zNear,
+	float _P00,
+	float _P11,
+	out vec4 _AABB)
+{
+	if (-_center.z < _radius + _zNear)
+	{
+		return false;
+	}
+
+	vec2 centerXZ = -_center.xz;
+	vec2 vX = vec2(sqrt(dot(centerXZ, centerXZ) - _radius * _radius), _radius);
+	vec2 minX = mat2(vX.x, vX.y, -vX.y, vX.x) * centerXZ;
+	vec2 maxX = mat2(vX.x, -vX.y, vX.y, vX.x) * centerXZ;
+
+	vec2 centerYZ = -_center.yz;
+	vec2 vY = vec2(sqrt(dot(centerYZ, centerYZ) - _radius * _radius), _radius);
+	vec2 minY = mat2(vY.x, vY.y, -vY.y, vY.x) * centerYZ;
+	vec2 maxY = mat2(vY.x, -vY.y, vY.y, vY.x) * centerYZ;
+
+	_AABB = 0.5 - 0.5 * vec4(
+		minX.x / minX.y * _P00, minY.x / minY.y * _P11,
+		maxX.x / maxX.y * _P00, maxY.x / maxY.y * _P11);
+
+	return true;
+}
 
 shared uint drawOffset;
 
@@ -28,6 +63,13 @@ void main()
 {
 	uint groupThreadIndex = gl_LocalInvocationID.x;
 	uint drawIndex = gl_GlobalInvocationID.x;
+
+	if (drawIndex >= perFrameData.maxDrawCount)
+	{
+		return;
+	}
+	
+	bool bPrepass = subgroupAny(perFrameData.bPrepass == 1);
 
 	PerDrawData perDrawData = perDrawDataVector[drawIndex];
 	Mesh mesh = meshes[perDrawData.meshIndex];
@@ -37,29 +79,62 @@ void main()
 		mesh.center[1],
 		mesh.center[2], 1.0)).xyz;
 		
-	bool visible = drawIndex < perFrameData.maxDrawCount;
+	bool bVisible = bPrepass ? visibility[drawIndex] == 1 : true;
 
-	if (visible)
+	bool bFrustumCullingEnabled = perFrameData.bEnableMeshFrustumCulling == 1;
+	if (subgroupAny(bFrustumCullingEnabled))
 	{
-		bool frustumCulled = false;
-
-		[[unroll]]
-		for(int i = 0; i < 6; ++i)
+		if (bVisible)
 		{
-			frustumCulled = frustumCulled ||
-				dot(vec4(center, 1.0), perFrameData.frustumPlanes[i]) + mesh.radius < 0.0;
+			bool bFrustumCulled = false;
+		
+			[[unroll]]
+			for(int i = 0; i < kFrustumPlaneCount; ++i)
+			{
+				bFrustumCulled = bFrustumCulled ||
+					dot(vec4(center, 1.0), perFrameData.frustumPlanes[i]) + mesh.radius < 0.0;
+			}
+		
+			bVisible = bVisible && !bFrustumCulled;
 		}
+	}
+	
+	if (!bPrepass)
+	{
+		bool bOcclusionCullingEnabled = perFrameData.bEnableMeshOcclusionCulling == 1;
+		if (subgroupAny(bOcclusionCullingEnabled))
+		{
+			if (bVisible)
+			{
+				vec3 centerViewSpace = (perFrameData.view * vec4(center, 1.0)).xyz;
+				float P00 = perFrameData.projection[0][0];
+				float P11 = perFrameData.projection[1][1];
+				float zNear = perFrameData.projection[3][2];
+				vec4 AABB;
 
-		frustumCulled = frustumCulled && perFrameData.enableMeshFrustumCulling == 1;
-		visible = !frustumCulled;
+				if (tryCalculateSphereBounds(centerViewSpace, mesh.radius, zNear, P00, P11, AABB))
+				{
+					float boundsWidth = (AABB.z - AABB.x) * float(perFrameData.hzbSize);
+					float boundsHeight = (AABB.w - AABB.y) * float(perFrameData.hzbSize);
+					float mipIndex = floor(log2(max(boundsWidth, boundsHeight)));
+
+					float occluderDepth = textureLod(hzb, 0.5 * (AABB.xy + AABB.zw), mipIndex).x;
+					float nearestBoundsDepth = zNear / (-centerViewSpace.z - mesh.radius);
+
+					bool bOcclusionCulled = occluderDepth >= nearestBoundsDepth;
+					bVisible = bVisible && !bOcclusionCulled;
+				}
+			}
+		}
 	}
 
-	uvec4 visibleBallot = subgroupBallot(visible);
-	uint visibleMeshCount = subgroupBallotBitCount(visibleBallot);
+	bool bDrawMesh = bPrepass ? bVisible : bVisible && visibility[drawIndex] == 0;
+	uvec4 drawMeshBallot = subgroupBallot(bDrawMesh);
 
 	if (groupThreadIndex == 0)
 	{
-		drawOffset = atomicAdd(drawCount, visibleMeshCount);
+		uint drawMeshCount = subgroupBallotBitCount(drawMeshBallot);
+		drawOffset = atomicAdd(drawCount, drawMeshCount);
 	}
 
 	subgroupMemoryBarrierShared();
@@ -75,9 +150,7 @@ void main()
 
 	MeshLod meshLod = mesh.lods[lodIndex];
 	
-	uint visibleMeshIndex = subgroupBallotExclusiveBitCount(visibleBallot);
-
-	if (visible)
+	if (bDrawMesh)
 	{
 		DrawCommand drawCommand;
 		drawCommand.indexCount = meshLod.indexCount;
@@ -92,7 +165,14 @@ void main()
 		drawCommand.drawIndex = drawIndex;
 		drawCommand.lodIndex = lodIndex;
 		
-		uint drawCommandIndex = drawOffset + visibleMeshIndex;
+		uint drawMeshIndex = subgroupBallotExclusiveBitCount(drawMeshBallot);
+
+		uint drawCommandIndex = drawOffset + drawMeshIndex;
 		drawCommands[drawCommandIndex] = drawCommand;
+	}
+	
+	if (!bPrepass)
+	{
+		visibility[drawIndex] = bVisible ? 1 : 0;
 	}
 }

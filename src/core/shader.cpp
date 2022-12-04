@@ -1,4 +1,3 @@
-#include "common.h"
 #include "device.h"
 #include "shader.h"
 #include "utils.h"
@@ -14,7 +13,8 @@
 	while (0)
 #endif // SPV_REFLECT_CALL
 
-static VkShaderStageFlags getShaderStage(SpvReflectShaderStageFlagBits _reflectShaderStage)
+static VkShaderStageFlags getShaderStage(
+	SpvReflectShaderStageFlagBits _reflectShaderStage)
 {
 	switch (_reflectShaderStage)
 	{
@@ -34,12 +34,13 @@ static VkShaderStageFlags getShaderStage(SpvReflectShaderStageFlagBits _reflectS
 		return VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	default:
-		assert(!"Unsupported SpvReflectShaderStageFlagBits.");
-		return VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
+		assert(!"Unsupported SpvReflectShaderStageFlagBits!");
+		return {};
 	}
 }
 
-static VkDescriptorType getDescriptorType(const SpvReflectDescriptorType _reflectDescriptorType)
+static VkDescriptorType getDescriptorType(
+	SpvReflectDescriptorType _reflectDescriptorType)
 {
 	switch (_reflectDescriptorType)
 	{
@@ -49,21 +50,24 @@ static VkDescriptorType getDescriptorType(const SpvReflectDescriptorType _reflec
 	case SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
 		return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 
+	case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+		return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+
 	default:
-		assert(!"Unsupported SpvReflectDescriptorType.");
-		return VK_DESCRIPTOR_TYPE_MAX_ENUM;
+		assert(!"Unsupported SpvReflectDescriptorType!");
+		return {};
 	}
 }
 
 Shader createShader(
-	Device _device,
+	Device& _rDevice,
 	ShaderDesc _desc)
 {
-	std::vector<uint8_t> shaderCode = readFile(_desc.pPath);
+	std::vector<char> spvSource = readFile(_desc.pPath);
 
 	SpvReflectShaderModule spvModule;
-	SPV_REFLECT_CALL(spvReflectCreateShaderModule(uint32_t(shaderCode.size()), (uint32_t*)shaderCode.data(), &spvModule));
-	
+	SPV_REFLECT_CALL(spvReflectCreateShaderModule(u32(spvSource.size()), spvSource.data(), &spvModule));
+
 	assert(spvModule.entry_point_count == 1);
 	assert(spvModule.descriptor_set_count <= 1);
 	assert(spvModule.push_constant_block_count <= 1);
@@ -73,10 +77,10 @@ Shader createShader(
 		.pEntry = _desc.pEntry };
 
 	VkShaderModuleCreateInfo shaderModuleCreateInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
-	shaderModuleCreateInfo.codeSize = uint32_t(shaderCode.size());
-	shaderModuleCreateInfo.pCode = (uint32_t*)shaderCode.data();
+	shaderModuleCreateInfo.codeSize = u32(spvSource.size());
+	shaderModuleCreateInfo.pCode = (u32*)spvSource.data();
 
-	VK_CALL(vkCreateShaderModule(_device.device, &shaderModuleCreateInfo, nullptr, &shader.resource));
+	VK_CALL(vkCreateShaderModule(_rDevice.device, &shaderModuleCreateInfo, nullptr, &shader.resource));
 
 	if (spvModule.push_constant_block_count > 0 && spvModule.push_constant_blocks != nullptr)
 	{
@@ -86,14 +90,14 @@ Shader createShader(
 			.size = spvModule.push_constant_blocks->size };
 	}
 
-	uint32_t spvBindingCount = 0;
+	u32 spvBindingCount = 0;
 	SPV_REFLECT_CALL(spvReflectEnumerateDescriptorBindings(&spvModule, &spvBindingCount, nullptr));
 
 	std::vector<SpvReflectDescriptorBinding*> spvBindings(spvBindingCount);
 	SPV_REFLECT_CALL(spvReflectEnumerateDescriptorBindings(&spvModule, &spvBindingCount, spvBindings.data()));
 
 	shader.layoutBindings.reserve(spvBindingCount);
-	for (uint32_t layoutBindingIndex = 0; layoutBindingIndex < spvBindingCount; ++layoutBindingIndex)
+	for (u32 layoutBindingIndex = 0; layoutBindingIndex < spvBindingCount; ++layoutBindingIndex)
 	{
 		VkDescriptorSetLayoutBinding descriptorSetLayoutBinding{};
 		descriptorSetLayoutBinding.binding = spvBindings[layoutBindingIndex]->binding;
@@ -111,9 +115,8 @@ Shader createShader(
 }
 
 void destroyShader(
-	Device _device,
+	Device&_rDevice,
 	Shader& _rShader)
 {
-	vkDestroyShaderModule(_device.device, _rShader.resource, nullptr);
-	_rShader = {};
+	vkDestroyShaderModule(_rDevice.device, _rShader.resource, nullptr);
 }

@@ -1,15 +1,9 @@
 #pragma once
 
-struct DeviceDesc
-{
-	bool bEnableValidationLayers = false;
-	bool bEnableMeshShadingPipeline = true;
-};
-
 struct Queue
 {
 	VkQueue queue = VK_NULL_HANDLE;
-	uint32_t index = ~0u;
+	u32 index = ~0u;
 };
 
 struct Device
@@ -25,6 +19,12 @@ struct Device
 	bool bMeshShadingPipelineAllowed = false;
 };
 
+struct DeviceDesc
+{
+	bool bEnableValidationLayers = false;    // Enable Vulkan's validation layer if supported.
+	bool bEnableMeshShadingPipeline = true;  // Enable mesh shading pipeline if supported.
+};
+
 Device createDevice(
 	GLFWwindow* _pWindow,
 	DeviceDesc _desc);
@@ -33,8 +33,8 @@ void destroyDevice(
 	Device& _rDevice);
 
 VkCommandBuffer createCommandBuffer(
-	Device _device);
+	Device& _rDevice);
 
 void immediateSubmit(
-	Device _device,
+	Device& _rDevice,
 	LAMBDA(VkCommandBuffer) _callback);

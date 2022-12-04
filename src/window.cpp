@@ -1,11 +1,10 @@
-#include "common.h"
 #include "window.h"
 
 GLFWwindow* createWindow(
 	WindowDesc _desc)
 {
 	glfwSetErrorCallback(
-		[](int32_t _error, const char* _description)
+		[](i32 _error, const char* _description)
 		{
 			fprintf(stderr, "GLFW error: %s\n", _description);
 		}

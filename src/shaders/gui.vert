@@ -11,14 +11,14 @@ struct Vertex
 
 layout(binding = 0) readonly buffer Vertices { Vertex vertices[]; };
 
-layout (push_constant) uniform PushConstants
+layout(push_constant) uniform block
 {
 	vec2 scale;
 	vec2 translate;
-} pushConstants;
+};
 
-layout (location = 0) out vec2 outUV;
-layout (location = 1) out vec4 outColor;
+layout(location = 0) out vec2 outUV;
+layout(location = 1) out vec4 outColor;
 
 void main() 
 {
@@ -34,6 +34,5 @@ void main()
 
 	gl_Position = vec4(vec2(
 			vertices[gl_VertexIndex].position[0],
-			vertices[gl_VertexIndex].position[1]) *
-		pushConstants.scale + pushConstants.translate, 0.0, 1.0);
+			vertices[gl_VertexIndex].position[1]) * scale + translate, 0.0, 1.0);
 }

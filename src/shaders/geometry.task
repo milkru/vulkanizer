@@ -3,8 +3,10 @@
 #extension GL_EXT_control_flow_attributes: require
 #extension GL_EXT_shader_8bit_storage: require
 #extension GL_EXT_shader_16bit_storage: require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_NV_mesh_shader: require
 #extension GL_KHR_shader_subgroup_ballot: require
+#extension GL_KHR_shader_subgroup_vote: require
 
 #include "shader_common.h"
 
@@ -49,7 +51,7 @@ void main()
 		meshlets[meshletIndex].center[1],
 		meshlets[meshletIndex].center[2], 1.0)).xyz;
 	
-	vec3 coneAxis = (perDrawData.model * vec4(
+	vec3 center = (perDrawData.model * vec4(
 		int(meshlets[meshletIndex].coneAxis[0]) / 127.0,
 		int(meshlets[meshletIndex].coneAxis[1]) / 127.0,
 		int(meshlets[meshletIndex].coneAxis[2]) / 127.0, 0.0)).xyz;
@@ -57,25 +59,39 @@ void main()
 	vec3 cameraPosition = perFrameData.cameraPosition;
 	float coneCutoff = int(meshlets[meshletIndex].coneCutoff) / 127.0;
 	
-	bool coneCulled =
-		perFrameData.enableMeshletConeCulling == 1 &&
-		dot(normalize(coneApex - cameraPosition), coneAxis) >= coneCutoff;
-
-	bool frustumCulled = false;
-
-	[[unroll]]
-	for(int i = 0; i < 6; ++i)
+	bool bVisible = true;
+	
+	bool bConeCullingEnabled = perFrameData.bEnableMeshletConeCulling == 1;
+	if (subgroupAny(bConeCullingEnabled))
 	{
-		frustumCulled = frustumCulled ||
-			dot(vec4(coneApex, 1.0), perFrameData.frustumPlanes[i]) + meshlets[meshletIndex].radius < 0.0;
+		if (bVisible)
+		{
+			bool bConeCulled = dot(normalize(coneApex - cameraPosition), center) >= coneCutoff;
+			bVisible = bVisible && !bConeCulled;
+		}
+	}
+	
+	bool bFrustumCullingEnabled = perFrameData.bEnableMeshletFrustumCulling == 1;
+	if (subgroupAny(bFrustumCullingEnabled))
+	{
+		if (bVisible)
+		{
+			bool bFrustumCulled = false;
+
+			[[unroll]]
+			for(int i = 0; i < kFrustumPlaneCount; ++i)
+			{
+				bFrustumCulled = bFrustumCulled ||
+					dot(vec4(coneApex, 1.0), perFrameData.frustumPlanes[i]) + meshlets[meshletIndex].radius < 0.0;
+			}
+
+			bVisible = bVisible && !bFrustumCulled;
+		}
 	}
 
-	frustumCulled = frustumCulled && perFrameData.enableMeshletFrustumCulling == 1;
+	uvec4 visibleBallot = subgroupBallot(bVisible);
 	
-	bool visible = !coneCulled && !frustumCulled;
-	uvec4 visibleBallot = subgroupBallot(visible);
-	
-	if (visible)
+	if (bVisible)
 	{
 		uint subgroupLocalMeshletIndex = subgroupBallotExclusiveBitCount(visibleBallot);
 		outTask.meshletIndices[subgroupLocalMeshletIndex] = meshletIndex;

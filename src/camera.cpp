@@ -1,14 +1,14 @@
-#include "common.h"
 #include "camera.h"
 #include "utils.h"
 #include "window.h"
+#include "shaders/shader_constants.h"
 
-static glm::vec2 getLookDirection(
+static v2 getLookDirection(
 	GLFWwindow* _pWindow)
 {
-	glm::vec2 direction(0.0f, 0.0f);
-	glm::vec2 right(0.0f, 1.0f);
-	glm::vec2 up(1.0f, 0.0f);
+	v2 direction(0.0f, 0.0f);
+	v2 right(0.0f, 1.0f);
+	v2 up(1.0f, 0.0f);
 
 	if (glfwGetKey(_pWindow, GLFW_KEY_UP) == GLFW_PRESS)
 	{
@@ -39,12 +39,12 @@ static glm::vec2 getLookDirection(
 	return direction;
 }
 
-static glm::vec3 getMoveDirection(
+static v3 getMoveDirection(
 	GLFWwindow* _pWindow,
-	glm::vec3 _forward,
-	glm::vec3 _up)
+	v3 _forward,
+	v3 _up)
 {
-	glm::vec3 direction(0.0f, 0.0f, 0.0f);
+	v3 direction(0.0f, 0.0f, 0.0f);
 
 	if (glfwGetKey(_pWindow, GLFW_KEY_W) == GLFW_PRESS)
 	{
@@ -86,28 +86,30 @@ static glm::vec3 getMoveDirection(
 
 void updateCamera(
 	GLFWwindow* _pWindow,
-	float _deltaTime,
+	f32 _deltaTime,
 	Camera& _rCamera)
 {
-	int32_t framebufferWidth;
-	int32_t framebufferHeight;
+	i32 framebufferWidth;
+	i32 framebufferHeight;
 	glfwGetFramebufferSize(_pWindow, &framebufferWidth, &framebufferHeight);
 
-	_rCamera.aspect = float(framebufferWidth) / float(framebufferHeight);
+	_rCamera.aspect = f32(framebufferWidth) / f32(framebufferHeight);
 
-	glm::vec2 lookDirection = getLookDirection(_pWindow);
+	v2 lookDirection = getLookDirection(_pWindow);
 	_rCamera.yaw += lookDirection.y * _deltaTime * _rCamera.sensitivity;
 	_rCamera.pitch += lookDirection.x * _deltaTime * _rCamera.sensitivity;
 	_rCamera.pitch = glm::clamp(_rCamera.pitch, -89.99f, 89.99f);
 
-	glm::vec3 forward;
+	v3 forward;
 	forward.x = glm::cos(glm::radians(_rCamera.yaw)) * glm::cos(glm::radians(_rCamera.pitch));
 	forward.y = glm::sin(glm::radians(_rCamera.pitch));
 	forward.z = glm::sin(glm::radians(_rCamera.yaw)) * glm::cos(glm::radians(_rCamera.pitch));
 
-	glm::vec3 up(0.0f, 1.0f, 0.0f);
-	glm::vec3 moveDirection = getMoveDirection(_pWindow, forward, up);
-	_rCamera.position += moveDirection * _deltaTime * _rCamera.moveSpeed;
+	f32 moveSpeed = glfwGetKey(_pWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ? _rCamera.boostMoveSpeed : _rCamera.moveSpeed;
+
+	v3 up(0.0f, 1.0f, 0.0f);
+	v3 moveDirection = getMoveDirection(_pWindow, forward, up);
+	_rCamera.position += moveDirection * _deltaTime * moveSpeed;
 
 	_rCamera.view = glm::lookAt(_rCamera.position, _rCamera.position + forward, up);
 	_rCamera.projection = getInfinitePerspectiveMatrix(glm::radians(_rCamera.fov), _rCamera.aspect, _rCamera.near);
@@ -115,20 +117,19 @@ void updateCamera(
 
 void getFrustumPlanes(
 	Camera _camera,
-	glm::vec4* _pFrustumPlanes)
+	v4* _pFrustumPlanes)
 {
-	glm::mat4 viewProjectionTransposed = glm::transpose(_camera.projection * _camera.view);
+	m4 viewProjectionTransposed = glm::transpose(_camera.projection * _camera.view);
 
 	_pFrustumPlanes[0] = viewProjectionTransposed[3] + viewProjectionTransposed[0];
 	_pFrustumPlanes[1] = viewProjectionTransposed[3] - viewProjectionTransposed[0];
 	_pFrustumPlanes[2] = viewProjectionTransposed[3] + viewProjectionTransposed[1];
 	_pFrustumPlanes[3] = viewProjectionTransposed[3] - viewProjectionTransposed[1];
 	_pFrustumPlanes[4] = viewProjectionTransposed[3] - viewProjectionTransposed[2];
-	_pFrustumPlanes[5] = glm::vec4(0.0);
 
-	for (uint32_t frustumIndex = 0; frustumIndex < 6; ++frustumIndex)
+	for (u32 frustumIndex = 0u; frustumIndex < kFrustumPlaneCount; ++frustumIndex)
 	{
-		glm::vec4& plane = _pFrustumPlanes[frustumIndex];
-		plane = plane / glm::length(glm::vec3(plane));
+		v4& plane = _pFrustumPlanes[frustumIndex];
+		plane = plane / glm::length(v3(plane));
 	}
 }

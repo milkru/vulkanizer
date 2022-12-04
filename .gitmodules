@@ -1,6 +1,6 @@
 [submodule "3rdparty/volk"]
 	path = 3rdparty/volk
-	url = https://github.com/zeux/volk.git
+	url = https://github.com/zeux/volk
 	branch = master
 [submodule "3rdparty/glfw"]
 	path = 3rdparty/glfw
@@ -12,7 +12,7 @@
 	branch = master
 [submodule "3rdparty/meshoptimizer"]
 	path = 3rdparty/meshoptimizer
-	url = https://github.com/zeux/meshoptimizer.git
+	url = https://github.com/zeux/meshoptimizer
 	branch = master
 [submodule "3rdparty/easy_profiler"]
 	path = 3rdparty/easy_profiler
@@ -31,4 +31,8 @@
 [submodule "3rdparty/VulkanMemoryAllocator"]
 	path = 3rdparty/VulkanMemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+	branch = master
+[submodule "3rdparty/CRCpp"]
+	path = 3rdparty/CRCpp
+	url = https://github.com/d-bahr/CRCpp
 	branch = master

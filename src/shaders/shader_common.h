@@ -28,16 +28,20 @@ struct Meshlet
 
 struct PerFrameData
 {
-	mat4 viewProjection;
-	vec4 frustumPlanes[6];
+	mat4 view;
+	mat4 projection;
+	vec4 frustumPlanes[kFrustumPlaneCount];
 	vec3 cameraPosition;
 	uint maxDrawCount;
 	float lodTransitionBase;
 	float lodTransitionStep;
 	int forcedLod;
-	uint enableMeshFrustumCulling;
-	uint enableMeshletConeCulling;
-	uint enableMeshletFrustumCulling;
+	uint hzbSize;
+	int8_t bPrepass;
+	int8_t bEnableMeshFrustumCulling;
+	int8_t bEnableMeshOcclusionCulling;
+	int8_t bEnableMeshletConeCulling;
+	int8_t bEnableMeshletFrustumCulling;
 };
 
 struct MeshLod

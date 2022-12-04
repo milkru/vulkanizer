@@ -1,13 +1,15 @@
-#include "common.h"
-#include "device.h"
-#include "texture.h"
+#include "core/device.h"
+#include "core/texture.h"
+#include "core/buffer.h"
+#include "core/shader.h"
+#include "core/pipeline.h"
+#include "core/pass.h"
+#include "core/frame_pacing.h"
+#include "core/query.h"
+
 #include "gui.h"
-#include "buffer.h"
-#include "shader.h"
-#include "pipeline.h"
-#include "pass.h"
-#include "frame_pacing.h"
 #include "window.h"
+#include "gpu_profiler.h"
 #include "shaders/shader_constants.h"
 
 #include <algorithm>
@@ -18,13 +20,16 @@ namespace gui
 {
 	struct Context
 	{
+		Context(Device& _rDevice)
+			: rDevice(_rDevice) {}
+
 		struct
 		{
-			glm::vec2 scale;
-			glm::vec2 translate;
+			v2 scale;
+			v2 translate;
 		} pushConstantBlock;
 
-		Device device;
+		Device& rDevice;
 		std::array<Buffer, kMaxFramesInFlightCount> vertexBuffers;
 		std::array<Buffer, kMaxFramesInFlightCount> indexBuffers;
 		Texture fontTexture;
@@ -38,44 +43,40 @@ namespace gui
 
 	static void createFontTexture()
 	{
-		ImGuiIO& io = ImGui::GetIO();
-		Context& context = getContext();
+		ImGuiIO& rIO = ImGui::GetIO();
+		Context& rContext = getContext();
 
-		uint8_t* fontData;
-		int32_t textureWidth;
-		int32_t textureHeight;
-		io.Fonts->GetTexDataAsRGBA32(&fontData, &textureWidth, &textureHeight);
+		u8* pFontData;
+		i32 textureWidth;
+		i32 textureHeight;
+		rIO.Fonts->GetTexDataAsRGBA32(&pFontData, &textureWidth, &textureHeight);
 
-		context.fontTexture = createTexture(context.device, {
-			.width = uint32_t(textureWidth),
-			.height = uint32_t(textureHeight),
+		rContext.fontTexture = createTexture(rContext.rDevice, {
+			.width = u32(textureWidth),
+			.height = u32(textureHeight),
 			.format = VK_FORMAT_R8G8B8A8_UNORM,
 			.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-			.sampler = createSampler(context.device.device, {
-				.filter = VK_FILTER_LINEAR,
+			.sampler = {
+				.filterMode = VK_FILTER_LINEAR,
 				.addressMode = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-				.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR }) });
+				.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR } });
 
 		// TODO-MILKRU: This is basically the pContents from buffer. Implement similar for textures.
-		VkDeviceSize uploadSize = VkDeviceSize(4 * textureWidth * textureHeight) * sizeof(char);
+		VkDeviceSize uploadSize = VkDeviceSize(4u * textureWidth * textureHeight) * sizeof(char);
 
-		Buffer stagingBuffer = createBuffer(context.device, {
-			.size = uploadSize,
+		Buffer stagingBuffer = createBuffer(rContext.rDevice, {
+			.byteSize = uploadSize,
 			.access = MemoryAccess::Host,
 			.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT });
 
-		memcpy(stagingBuffer.pMappedData, fontData, uploadSize);
+		memcpy(stagingBuffer.pMappedData, pFontData, uploadSize);
 
-		immediateSubmit(context.device, [&](VkCommandBuffer _commandBuffer)
+		immediateSubmit(rContext.rDevice, [&](VkCommandBuffer _commandBuffer)
 			{
-				textureBarrier(
-					_commandBuffer,
-					context.fontTexture,
-					VK_IMAGE_ASPECT_COLOR_BIT,
-					VK_IMAGE_LAYOUT_UNDEFINED,
-					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					VK_PIPELINE_STAGE_HOST_BIT,
-					VK_PIPELINE_STAGE_TRANSFER_BIT);
+				textureBarrier(_commandBuffer, rContext.fontTexture,
+					VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					VK_ACCESS_NONE, VK_ACCESS_TRANSFER_WRITE_BIT,
+					VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 				VkBufferImageCopy bufferCopyRegion{};
 				bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -87,62 +88,58 @@ namespace gui
 				vkCmdCopyBufferToImage(
 					_commandBuffer,
 					stagingBuffer.resource,
-					context.fontTexture.resource,
+					rContext.fontTexture.resource,
 					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					1, &bufferCopyRegion
+					1u, &bufferCopyRegion
 				);
 
-				textureBarrier(
-					_commandBuffer,
-					context.fontTexture,
-					VK_IMAGE_ASPECT_COLOR_BIT,
-					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-					VK_PIPELINE_STAGE_TRANSFER_BIT,
-					VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+				textureBarrier(_commandBuffer, rContext.fontTexture,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+					VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+					VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 			});
 
-		destroyBuffer(context.device, stagingBuffer);
+		destroyBuffer(rContext.rDevice, stagingBuffer);
 	}
 
 	static void newGlfwFrame(
 		GLFWwindow* _pWindow)
 	{
-		int32_t windowWidth;
-		int32_t windowHeight;
+		i32 windowWidth;
+		i32 windowHeight;
 		glfwGetWindowSize(_pWindow, &windowWidth, &windowHeight);
 
-		ImGuiIO& io = ImGui::GetIO();
-		io.DisplaySize = ImVec2((float)windowWidth, (float)windowHeight);
+		ImGuiIO& rIO = ImGui::GetIO();
+		rIO.DisplaySize = ImVec2((f32)windowWidth, (f32)windowHeight);
 
-		int32_t framebufferWidth;
-		int32_t framebufferHeight;
+		i32 framebufferWidth;
+		i32 framebufferHeight;
 		glfwGetFramebufferSize(_pWindow, &framebufferWidth, &framebufferHeight);
 
 		if (windowWidth > 0 && windowHeight > 0)
 		{
-			io.DisplayFramebufferScale = ImVec2(
-				float(framebufferWidth) / float(windowWidth),
-				float(framebufferHeight) / float(windowHeight));
+			rIO.DisplayFramebufferScale = ImVec2(
+				f32(framebufferWidth) / f32(windowWidth),
+				f32(framebufferHeight) / f32(windowHeight));
 		}
 
-		static double previousTime = 0.0;
-		double currentTime = glfwGetTime();
+		static f64 previousTime = 0.0;
+		f64 currentTime = glfwGetTime();
 
-		io.DeltaTime = (float)(currentTime - previousTime);
+		rIO.DeltaTime = (f32)(currentTime - previousTime);
 		previousTime = currentTime;
 
-		double xMousePosition;
-		double yMousePosition;
+		f64 xMousePosition;
+		f64 yMousePosition;
 		glfwGetCursorPos(_pWindow, &xMousePosition, &yMousePosition);
 
-		io.MousePos = ImVec2(xMousePosition, yMousePosition);
-		io.MouseDown[0] = glfwGetMouseButton(_pWindow, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-		io.MouseDown[1] = glfwGetMouseButton(_pWindow, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+		rIO.MousePos = ImVec2(xMousePosition, yMousePosition);
+		rIO.MouseDown[0] = glfwGetMouseButton(_pWindow, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+		rIO.MouseDown[1] = glfwGetMouseButton(_pWindow, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
 	}
 
 	static void updateBuffers(
-		uint32_t _frameIndex)
+		u32 _frameIndex)
 	{
 		ImDrawData* drawData = ImGui::GetDrawData();
 
@@ -154,206 +151,237 @@ namespace gui
 			return;
 		}
 
-		Context& context = getContext();
+		Context& rContext = getContext();
 
-		if (context.vertexBuffers[_frameIndex].resource == VK_NULL_HANDLE || context.vertexBuffers[_frameIndex].size < vertexBufferSize)
+		if (rContext.vertexBuffers[_frameIndex].resource == VK_NULL_HANDLE ||
+			rContext.vertexBuffers[_frameIndex].byteSize < vertexBufferSize)
 		{
-			destroyBuffer(context.device, context.vertexBuffers[_frameIndex]);
+			if (rContext.vertexBuffers[_frameIndex].resource != VK_NULL_HANDLE)
+			{
+				destroyBuffer(rContext.rDevice, rContext.vertexBuffers[_frameIndex]);
+			}
 
-			context.vertexBuffers[_frameIndex] = createBuffer(context.device, {
-				.size = vertexBufferSize,
+			rContext.vertexBuffers[_frameIndex] = createBuffer(rContext.rDevice, {
+				.byteSize = vertexBufferSize,
 				.access = MemoryAccess::Host,
 				.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT });
 		}
 
-		if (context.indexBuffers[_frameIndex].resource == VK_NULL_HANDLE || context.indexBuffers[_frameIndex].size < indexBufferSize)
+		if (rContext.indexBuffers[_frameIndex].resource == VK_NULL_HANDLE ||
+			rContext.indexBuffers[_frameIndex].byteSize < indexBufferSize)
 		{
-			destroyBuffer(context.device, context.indexBuffers[_frameIndex]);
+			if (rContext.indexBuffers[_frameIndex].resource != VK_NULL_HANDLE)
+			{
+				destroyBuffer(rContext.rDevice, rContext.indexBuffers[_frameIndex]);
+			}
 
-			context.indexBuffers[_frameIndex] = createBuffer(context.device, {
-				.size = indexBufferSize,
+			rContext.indexBuffers[_frameIndex] = createBuffer(rContext.rDevice, {
+				.byteSize = indexBufferSize,
 				.access = MemoryAccess::Host,
 				.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT });
 		}
 
-		ImDrawVert* vertexData = (ImDrawVert*)context.vertexBuffers[_frameIndex].pMappedData;
-		ImDrawIdx* indexData = (ImDrawIdx*)context.indexBuffers[_frameIndex].pMappedData;
+		ImDrawVert* vertexData = (ImDrawVert*)rContext.vertexBuffers[_frameIndex].pMappedData;
+		ImDrawIdx* indexData = (ImDrawIdx*)rContext.indexBuffers[_frameIndex].pMappedData;
 
-		for (int32_t cmdListIndex = 0; cmdListIndex < drawData->CmdListsCount; ++cmdListIndex)
+		for (i32 cmdListIndex = 0; cmdListIndex < drawData->CmdListsCount; ++cmdListIndex)
 		{
-			const ImDrawList* cmdList = drawData->CmdLists[cmdListIndex];
+			ImDrawList* pCmdList = drawData->CmdLists[cmdListIndex];
 
-			memcpy(vertexData, cmdList->VtxBuffer.Data, cmdList->VtxBuffer.Size * sizeof(ImDrawVert));
-			memcpy(indexData, cmdList->IdxBuffer.Data, cmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
+			memcpy(vertexData, pCmdList->VtxBuffer.Data, pCmdList->VtxBuffer.Size * sizeof(ImDrawVert));
+			memcpy(indexData, pCmdList->IdxBuffer.Data, pCmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
 
-			vertexData += cmdList->VtxBuffer.Size;
-			indexData += cmdList->IdxBuffer.Size;
+			vertexData += pCmdList->VtxBuffer.Size;
+			indexData += pCmdList->IdxBuffer.Size;
 		}
 	}
 
 	void initialize(
-		Device _device,
+		Device& _rDevice,
 		VkFormat _colorFormat,
 		VkFormat _depthFormat,
-		float _windowWidth,
-		float _windowHeight)
+		f32 _windowWidth,
+		f32 _windowHeight)
 	{
 		ImGui::CreateContext();
 
-		ImGuiIO& io = ImGui::GetIO();
-		io.BackendRendererUserData = new Context();
-		io.DisplaySize = ImVec2(_windowWidth, _windowHeight);
-		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+		ImGuiIO& rIO = ImGui::GetIO();
+		rIO.BackendRendererUserData = new Context(_rDevice);
+		rIO.DisplaySize = ImVec2(_windowWidth, _windowHeight);
+		rIO.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 
-		ImGuiStyle& style = ImGui::GetStyle();
-		style.FrameRounding = 5.0f;
-		style.WindowRounding = 7.0f;
-		style.WindowBorderSize = 2.0f;
+		ImGuiStyle& rStyle = ImGui::GetStyle();
+		rStyle.FrameRounding = 5.0f;
+		rStyle.WindowRounding = 7.0f;
+		rStyle.WindowBorderSize = 2.0f;
 
-		for (uint32_t colorIndex = 0; colorIndex < ImGuiCol_COUNT; ++colorIndex)
+		for (u32 colorIndex = 0; colorIndex < ImGuiCol_COUNT; ++colorIndex)
 		{
-			ImVec4& color = style.Colors[colorIndex];
-			color.x = color.y = color.z = (0.2125f * color.x) + (0.7154f * color.y) + (0.0721f * color.z);
+			ImVec4& rColor = rStyle.Colors[colorIndex];
+			rColor.x = rColor.y = rColor.z = (0.2125f * rColor.x) + (0.7154f * rColor.y) + (0.0721f * rColor.z);
 		}
 
-		Context& context = getContext();
-		context.device = _device;
+		Context& rContext = getContext();
+		rContext.rDevice = _rDevice;
 
 		createFontTexture();
 
-		Shader vertShader = createShader(context.device, { .pPath = "shaders/gui.vert.spv", .pEntry = "main" });
-		Shader fragShader = createShader(context.device, { .pPath = "shaders/gui.frag.spv", .pEntry = "main" });
+		Shader vertShader = createShader(rContext.rDevice, { .pPath = "shaders/gui.vert.spv", .pEntry = "main" });
+		Shader fragShader = createShader(rContext.rDevice, { .pPath = "shaders/gui.frag.spv", .pEntry = "main" });
 
-		context.pipeline = createGraphicsPipeline(context.device, {
+		rContext.pipeline = createGraphicsPipeline(rContext.rDevice, {
 			.shaders = { vertShader, fragShader },
 			.attachmentLayout = {
-				.colorAttachmentStates = { {
+				.colorAttachments = { {
 					.format = _colorFormat,
-					.blendEnable = true } },
+					.bBlendEnable = true } },
 				.depthStencilFormat = { _depthFormat }},
-			.rasterizationState = {
+			.rasterization = {
 				.cullMode = VK_CULL_MODE_NONE,
 				.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE },
-			.depthStencilState = {
-				.depthTestEnable = false,
-				.depthWriteEnable = false,
+			.depthStencil = {
+				.bDepthTestEnable = false,
+				.bDepthWriteEnable = false,
 				.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL } });
 
-		destroyShader(context.device, fragShader);
-		destroyShader(context.device, vertShader);
+		destroyShader(rContext.rDevice, fragShader);
+		destroyShader(rContext.rDevice, vertShader);
 	}
 
 	void terminate()
 	{
-		Context& context = getContext();
+		Context& rContext = getContext();
 
-		for (Buffer& vertexBuffer : context.vertexBuffers)
+		for (Buffer& rVertexBuffer : rContext.vertexBuffers)
 		{
-			destroyBuffer(context.device, vertexBuffer);
+			destroyBuffer(rContext.rDevice, rVertexBuffer);
 		}
 
-		for (Buffer& indexBuffer : context.indexBuffers)
+		for (Buffer& rIndexBuffer : rContext.indexBuffers)
 		{
-			destroyBuffer(context.device, indexBuffer);
+			destroyBuffer(rContext.rDevice, rIndexBuffer);
 		}
 
-		vkDestroySampler(context.device.device, context.fontTexture.sampler, nullptr);
+		destroyTexture(rContext.rDevice, rContext.fontTexture);
+		destroyPipeline(rContext.rDevice, rContext.pipeline);
 
-		destroyTexture(context.device, context.fontTexture);
-		destroyPipeline(context.device, context.pipeline);
-
-		IM_DELETE(&context);
+		IM_DELETE(&rContext);
 
 		ImGui::DestroyContext();
 	}
 
 	struct TimeGraphState
 	{
-		static const uint32_t kMaxPlotPoints = 64;
-		std::array<float, kMaxPlotPoints> points{};
+		static const u32 kMaxPlotPoints = 64;
+		std::array<f32, kMaxPlotPoints> points{};
 		const char* name = "Unassigned";
 	};
 
 	void plotTimeGraph(
-		float _newPoint,
-		TimeGraphState& _rState)
+		f32 _newPoint,
+		TimeGraphState& _rGraphState)
 	{
-		std::rotate(_rState.points.begin(), _rState.points.begin() + 1, _rState.points.end());
-		_rState.points.back() = _newPoint;
+		std::rotate(_rGraphState.points.begin(), _rGraphState.points.begin() + 1, _rGraphState.points.end());
+		_rGraphState.points.back() = _newPoint;
 
 		char title[64];
-		sprintf(title, "%s Time: %.2f ms", _rState.name, _newPoint);
+		sprintf(title, "%s Time: %.2f ms", _rGraphState.name, _newPoint);
 
-		const float kMinPlotValue = 0.0f;
-		const float kMaxPlotValue = 20.0f;
-		ImGui::PlotLines("", &_rState.points[0], _rState.points.size(), 0,
+		f32 kMinPlotValue = 0.0f;
+		f32 kMaxPlotValue = 20.0f;
+		ImGui::PlotLines("", &_rGraphState.points[0], _rGraphState.points.size(), 0,
 			title, kMinPlotValue, kMaxPlotValue, ImVec2(300.0f, 50.0f));
 	}
 
 	void newFrame(
 		GLFWwindow* _pWindow,
-		State& _rState)
+		Settings& _rSettings)
 	{
 		newGlfwFrame(_pWindow);
 
 		ImGui::NewFrame();
 
-		ImGuiIO& io = ImGui::GetIO();
+		ImGuiIO& rIO = ImGui::GetIO();
 
 		{
+			static bool bWindowHovered = false;
+
 			ImGui::SetNextWindowPos(ImVec2(25, 30), ImGuiCond_FirstUseEver);
-			ImGui::SetNextWindowBgAlpha(ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) ? 0.8f : 0.4f);
+			ImGui::SetNextWindowBgAlpha(bWindowHovered ? 0.8f : 0.4f);
 
 			ImGui::Begin("Performance", 0, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
 
-			ImGui::Text("Device: %s", _rState.deviceName);
+			bWindowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_None);
+
+			ImGui::Text("Device: %s", _rSettings.deviceName);
 			ImGui::Separator();
 
-			static TimeGraphState cpuGraphState{};
-			cpuGraphState.name = "CPU";
-			plotTimeGraph(1.e3 * io.DeltaTime, cpuGraphState);
+			{
+				static TimeGraphState timeGraph{};
+				timeGraph.name = "CPU Time";
+				plotTimeGraph(1.e3 * rIO.DeltaTime, timeGraph);
+			}
 
-			static TimeGraphState generateDrawsGpuGraphState{};
-			generateDrawsGpuGraphState.name = "Generate Draws GPU";
-			plotTimeGraph(_rState.generateDrawsGpuTime, generateDrawsGpuGraphState);
+			{
+				static TimeGraphState timeGraph{};
+				timeGraph.name = "GPU Time";
 
-			static TimeGraphState geometryGpuGraphState{};
-			geometryGpuGraphState.name = "Geometry GPU";
-			plotTimeGraph(_rState.geometryGpuTime, geometryGpuGraphState);
+				f64 totalGpuTime = 0.0;
+				for (auto& rGpuTime : _rSettings.gpuTimes)
+				{
+					totalGpuTime += rGpuTime.second;
+				}
+
+				plotTimeGraph(totalGpuTime, timeGraph);
+			}
 
 			ImGui::Separator();
 
-			ImGui::Text("Input Assembly Vertices:     %lld", _rState.inputAssemblyVertices);
-			ImGui::Text("Input Assembly Primitives:   %lld", _rState.inputAssemblyPrimitives);
-			ImGui::Text("Vertex Shader Invocations:   %lld", _rState.vertexShaderInvocations);
-			ImGui::Text("Clipping Invocations:        %lld", _rState.clippingInvocations);
-			ImGui::Text("Clipping Primitives:         %lld", _rState.clippingPrimitives);
-			ImGui::Text("Fragment Shader Invocations: %lld", _rState.fragmentShaderInvocations);
-			ImGui::Text("Compute Shader Invocations:  %lld", _rState.computeShaderInvocations);
+			for (auto& rGpuTime : _rSettings.gpuTimes)
+			{
+				ImGui::Text("%.3f ms - %s", rGpuTime.second, rGpuTime.first.c_str());
+			}
+
+			ImGui::Separator();
+
+			{
+				ImGui::Text("Input Assembly Vertices:     %lld", _rSettings.inputAssemblyVertices);
+				ImGui::Text("Input Assembly Primitives:   %lld", _rSettings.inputAssemblyPrimitives);
+				ImGui::Text("Vertex Shader Invocations:   %lld", _rSettings.vertexShaderInvocations);
+				ImGui::Text("Clipping Invocations:        %lld", _rSettings.clippingInvocations);
+				ImGui::Text("Clipping Primitives:         %lld", _rSettings.clippingPrimitives);
+				ImGui::Text("Fragment Shader Invocations: %lld", _rSettings.fragmentShaderInvocations);
+				ImGui::Text("Compute Shader Invocations:  %lld", _rSettings.computeShaderInvocations);
+			}
 
 			ImGui::End();
 		}
 
 		{
-			ImGui::SetNextWindowPos(ImVec2(25, 410), ImGuiCond_FirstUseEver);
-			ImGui::SetNextWindowBgAlpha(ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) ? 0.8f : 0.4f);
+			static bool bWindowHovered = false;
+
+			ImGui::SetNextWindowPos(ImVec2(25, 435), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowBgAlpha(bWindowHovered ? 0.8f : 0.4f);
 
 			ImGui::Begin("Settings", 0, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
 
-			ImGui::Checkbox("Force Lod", &_rState.bForceMeshLodEnabled);
-			ImGui::BeginDisabled(!_rState.bForceMeshLodEnabled);
+			bWindowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_None);
+
+			ImGui::Checkbox("Force Lod", &_rSettings.bForceMeshLodEnabled);
+			ImGui::BeginDisabled(!_rSettings.bForceMeshLodEnabled);
 			ImGui::SameLine();
-			ImGui::SliderInt("##Forced Lod", &_rState.forcedLod, 0, kMaxMeshLods - 1);
+			ImGui::SliderInt("##Forced Lod", &_rSettings.forcedLod, 0, kMaxMeshLods - 1);
 			ImGui::EndDisabled();
-			ImGui::Checkbox("Mesh Frustum Culling", &_rState.bMeshFrustumCullingEnabled);
-			ImGui::Checkbox("Freeze Camera", &_rState.bFreezeCameraEnabled);
+			ImGui::Checkbox("Mesh Frustum Culling", &_rSettings.bMeshFrustumCullingEnabled);
+			ImGui::Checkbox("Mesh Occlusion Culling", &_rSettings.bMeshOcclusionCullingEnabled);
+			ImGui::Checkbox("Freeze Camera", &_rSettings.bFreezeCameraEnabled);
 			ImGui::Separator();
 
-			ImGui::BeginDisabled(!_rState.bMeshShadingPipelineSupported);
-			ImGui::Checkbox("Mesh Shading Pipeline", &_rState.bMeshShadingPipelineEnabled);
-			ImGui::BeginDisabled(!_rState.bMeshShadingPipelineEnabled);
-			ImGui::Checkbox("Meshlet Cone Culling", &_rState.bMeshletConeCullingEnabled);
-			ImGui::Checkbox("Meshlet Frustum Culling", &_rState.bMeshletFrustumCullingEnabled);
+			ImGui::BeginDisabled(!_rSettings.bMeshShadingPipelineSupported);
+			ImGui::Checkbox("Mesh Shading Pipeline", &_rSettings.bMeshShadingPipelineEnabled);
+			ImGui::BeginDisabled(!_rSettings.bMeshShadingPipelineEnabled);
+			ImGui::Checkbox("Meshlet Cone Culling", &_rSettings.bMeshletConeCullingEnabled);
+			ImGui::Checkbox("Meshlet Frustum Culling", &_rSettings.bMeshletFrustumCullingEnabled);
 			ImGui::EndDisabled();
 			ImGui::EndDisabled();
 
@@ -365,61 +393,70 @@ namespace gui
 
 	void drawFrame(
 		VkCommandBuffer _commandBuffer,
-		uint32_t _frameIndex,
-		Texture _attachment)
+		u32 _frameIndex,
+		Texture& _rAttachment)
 	{
+		GPU_BLOCK(_commandBuffer, "GUI");
+
 		updateBuffers(_frameIndex);
 
-		ImGuiIO& io = ImGui::GetIO();
-		Context& context = getContext();
+		Context& rContext = getContext();
 
-		context.pushConstantBlock = {
-			.scale = glm::vec2(2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y),
-			.translate = glm::vec2(-1.0f) };
+		if (rContext.vertexBuffers[_frameIndex].resource == VK_NULL_HANDLE ||
+			rContext.indexBuffers[_frameIndex].resource == VK_NULL_HANDLE)
+		{
+			return;
+		}
+
+		ImGuiIO& rIO = ImGui::GetIO();
+
+		rContext.pushConstantBlock = {
+			.scale = v2(2.0f / rIO.DisplaySize.x, 2.0f / rIO.DisplaySize.y),
+			.translate = v2(-1.0f) };
 
 		executePass(_commandBuffer, {
-			.pipeline = context.pipeline,
+			.pipeline = rContext.pipeline,
 			.viewport = {
 				.offset = { 0.0f, 0.0f },
-				.extent = { io.DisplaySize.x, io.DisplaySize.y }},
+				.extent = { rIO.DisplaySize.x, rIO.DisplaySize.y }},
 			.colorAttachments = {{
-				.texture = _attachment,
+				.texture = _rAttachment,
 				.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD }},
 			.bindings = {
-				context.vertexBuffers[_frameIndex],
-				context.fontTexture },
+				Binding(rContext.vertexBuffers[_frameIndex]),
+				Binding(rContext.fontTexture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) },
 			.pushConstants = {
-				.size = sizeof(context.pushConstantBlock),
-				.pData = &context.pushConstantBlock } },
+				.byteSize = sizeof(rContext.pushConstantBlock),
+				.pData = &rContext.pushConstantBlock } },
 				[&]()
 			{
 				ImDrawData* pDrawData = ImGui::GetDrawData();
-				int32_t globalIndexOffset = 0;
-				int32_t globalVertexOffset = 0;
+				i32 globalIndexOffset = 0;
+				i32 globalVertexOffset = 0;
 
 				if (pDrawData->CmdListsCount > 0)
 				{
-					vkCmdBindIndexBuffer(_commandBuffer, context.indexBuffers[_frameIndex].resource, 0, VK_INDEX_TYPE_UINT16);
+					vkCmdBindIndexBuffer(_commandBuffer, rContext.indexBuffers[_frameIndex].resource, 0, VK_INDEX_TYPE_UINT16);
 
-					for (int32_t cmdListIndex = 0; cmdListIndex < pDrawData->CmdListsCount; ++cmdListIndex)
+					for (i32 cmdListIndex = 0; cmdListIndex < pDrawData->CmdListsCount; ++cmdListIndex)
 					{
 						ImDrawList* pCmdList = pDrawData->CmdLists[cmdListIndex];
-						for (int32_t cmdBufferIndex = 0; cmdBufferIndex < pCmdList->CmdBuffer.Size; ++cmdBufferIndex)
+						for (i32 cmdBufferIndex = 0; cmdBufferIndex < pCmdList->CmdBuffer.Size; ++cmdBufferIndex)
 						{
 							ImDrawCmd* pCmdBuffer = &pCmdList->CmdBuffer[cmdBufferIndex];
 
 							VkRect2D scissorRect = {
 								.offset = {
-									.x = std::max((int32_t)(pCmdBuffer->ClipRect.x), 0),
-									.y = std::max((int32_t)(pCmdBuffer->ClipRect.y), 0) },
+									.x = std::max((i32)(pCmdBuffer->ClipRect.x), 0),
+									.y = std::max((i32)(pCmdBuffer->ClipRect.y), 0) },
 								.extent = {
-									.width = uint32_t(pCmdBuffer->ClipRect.z - pCmdBuffer->ClipRect.x),
-									.height = uint32_t(pCmdBuffer->ClipRect.w - pCmdBuffer->ClipRect.y) } };
+									.width = u32(pCmdBuffer->ClipRect.z - pCmdBuffer->ClipRect.x),
+									.height = u32(pCmdBuffer->ClipRect.w - pCmdBuffer->ClipRect.y) } };
 
 							vkCmdSetScissor(_commandBuffer, 0, 1, &scissorRect);
 
-							uint32_t firstIndex = pCmdBuffer->IdxOffset + globalIndexOffset;
-							int32_t vertexOffset = pCmdBuffer->VtxOffset + globalVertexOffset;
+							u32 firstIndex = pCmdBuffer->IdxOffset + globalIndexOffset;
+							i32 vertexOffset = pCmdBuffer->VtxOffset + globalVertexOffset;
 							vkCmdDrawIndexed(_commandBuffer, pCmdBuffer->ElemCount, 1, firstIndex, vertexOffset, 0);
 						}
 
@@ -428,5 +465,28 @@ namespace gui
 					}
 				}
 			});
+	}
+
+	void updateGpuPerformanceState(
+		VkPhysicalDeviceLimits _deviceLimits,
+		Settings& _rSettings)
+	{
+		for (auto& rBlockName : gpu::profiler::getBlockNames())
+		{
+			f64 result;
+			if (GPU_BLOCK_RESULT(rBlockName, _deviceLimits, result))
+			{
+				_rSettings.gpuTimes.erase(rBlockName);
+				_rSettings.gpuTimes[rBlockName] = result;
+			}
+		}
+
+		GPU_STATS_RESULT("Frame", StatType::InputAssemblyVertices, _rSettings.inputAssemblyVertices);
+		GPU_STATS_RESULT("Frame", StatType::InputAssemblyPrimitives, _rSettings.inputAssemblyPrimitives);
+		GPU_STATS_RESULT("Frame", StatType::VertexShaderInvocations, _rSettings.vertexShaderInvocations);
+		GPU_STATS_RESULT("Frame", StatType::ClippingInvocations, _rSettings.clippingInvocations);
+		GPU_STATS_RESULT("Frame", StatType::ClippingPrimitives, _rSettings.clippingPrimitives);
+		GPU_STATS_RESULT("Frame", StatType::FragmentShaderInvocations, _rSettings.fragmentShaderInvocations);
+		GPU_STATS_RESULT("Frame", StatType::ComputeShaderInvocations, _rSettings.computeShaderInvocations);
 	}
 }
