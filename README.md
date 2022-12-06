@@ -33,7 +33,7 @@ Rendering engine prototype made with `Vulkan 1.3`. Code is written using a [simp
 This project uses [CMake](https://cmake.org/download/) as a build tool. Since the project is built using `Vulkan`, the latest [Vulkan SDK](https://vulkan.lunarg.com) is required.
 
 ## Requirements
-Make sure that your graphics card can support listed Vulkan features and make sure to have updated driver.
+Make sure that your graphics card can support listed Vulkan features and make sure you have updated graphics card driver.
 
 ## License
 Distributed under the MIT License. See `LICENSE` for more information.
