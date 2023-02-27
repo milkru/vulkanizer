@@ -170,3 +170,13 @@ set(BUILD_TEST OFF CACHE BOOL "")
 add_subdirectory(${CRC_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CRC_DIR}/inc)
 target_link_libraries(${PROJECT_NAME} PRIVATE CRCpp)
+
+message("Adding METIS:")
+
+set(METIS_DIR 3rdparty/METIS)
+
+add_subdirectory(${METIS_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${METIS_DIR}/include)
+target_link_libraries(${PROJECT_NAME} PRIVATE metis)
+
+set_property(TARGET metis PROPERTY FOLDER "3rdparty")
