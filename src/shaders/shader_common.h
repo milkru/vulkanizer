@@ -19,6 +19,8 @@ struct Meshlet
 	uint vertexCount;
 	uint triangleCount;
 
+	uint groupIndex; // TODO-MILKRU: Temp
+
 	float center[3];
 	float radius;
 

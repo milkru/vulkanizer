@@ -180,3 +180,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${METIS_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE metis)
 
 set_property(TARGET metis PROPERTY FOLDER "3rdparty")
+
+set(GKLIB_DIR ${METIS_DIR}/3rdparty/GKlib)
+
+add_subdirectory(${GKLIB_DIR})
+target_include_directories(metis PRIVATE ${GKLIB_DIR})
+target_link_libraries(metis PRIVATE GKlib)

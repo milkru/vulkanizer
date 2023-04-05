@@ -56,7 +56,11 @@ void main()
 	PerDrawData perDrawData = perDrawDataVector[drawIndex];
 
 	vec3 meshletColor = getRandomColor(meshletIndex);
+	vec3 groupColor = getRandomColor(meshlets[meshletIndex].groupIndex); // TODO-MILKRU: Temp
 	uint globalVertexOffset = meshes[perDrawData.meshIndex].vertexOffset;
+
+	meshletColor = 0.5 * (meshletColor + groupColor);
+	//meshletColor = groupColor;
 
 	[[unroll]]
 	for (uint loopIndex = 0; loopIndex < kVertexLoops; ++loopIndex)

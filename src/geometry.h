@@ -14,6 +14,8 @@ struct Meshlet
 	u32 vertexCount;
 	u32 triangleCount;
 
+	u32 groupIndex; // TODO-MILKRU: Temp
+
 	f32 center[3];
 	f32 radius;
 	i8 coneAxis[3];
@@ -61,4 +63,4 @@ struct GeometryBuffers
 GeometryBuffers createGeometryBuffers(
 	Device& _rDevice,
 	u32 _meshCount,
-	const char** _meshPaths);
+	const char** _ppMeshPaths);
