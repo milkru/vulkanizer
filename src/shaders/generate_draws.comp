@@ -159,7 +159,7 @@ void main()
 		drawCommand.vertexOffset = mesh.vertexOffset;
 
 		drawCommand.firstInstance = 0;
-		drawCommand.taskCount = (meshLod.meshletCount + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
+		drawCommand.taskCount = (mesh.lodDagNodeCount + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
 		drawCommand.firstTask = 0;
 
 		drawCommand.drawIndex = drawIndex;

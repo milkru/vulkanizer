@@ -8,6 +8,16 @@
 #include <meshoptimizer.h>
 #include <metis.h>
 
+
+
+
+// TODO-MILKRU: DELETE ONE LINE FROM METIS CMAKE ABOUT GKLIB, ADD #if 0 IN METIS FOR mem_flush AND SUBMIT TO MESTIS REPO
+
+
+
+
+
+
 // TODO-MILKRU: Add _Out_ everywhere
 
 // TODO-MILKRU: Integrate https://github.com/wolfpld/tracy
@@ -58,6 +68,7 @@ namespace pgd
 	typedef std::array<TriangleEdge, 3> TriangleEdges;
 	typedef std::vector<TriangleEdges> MeshletTriangleEdges;
 	typedef std::vector<TriangleEdge> MeshletBoundary;
+	typedef std::vector<Meshlet> MeshletGroup;
 
 	static bool isSharedEdge(
 		TriangleEdge& _rFirst,
@@ -130,13 +141,17 @@ namespace pgd
 		assert(result == METIS_OK);
 	}
 
-	typedef std::vector<u32> GroupIndicies;
+	struct TriangleGroup
+	{
+		std::vector<u32> indices;
+		float simplifyError;
+	};
 
 	static void groupMeshlets( // TODO-MILKRU: We need a new name for this and separate these two functions? use DRY more?
 		Geometry& _rGeometry,
 		u32 _meshletOffset,
 		u32 _meshletCount,
-		_Out_ std::vector<GroupIndicies>& _rGroups)
+		_Out_ std::vector<MeshletGroup>& _rGroups)
 	{
 		std::vector<MeshletBoundary> meshletBoundaries(_meshletCount);
 		{
@@ -262,7 +277,7 @@ namespace pgd
 		for (u32 meshletIndex = 0; meshletIndex < _meshletCount; ++meshletIndex)
 		{
 			idx_t groupIndex = resultingPartitions[meshletIndex];
-			GroupIndicies& rGroup = _rGroups[groupIndex];
+			MeshletGroup& rGroup = _rGroups[groupIndex];
 
 			// TODO-MILKRU: Opt
 			//if (rGroup.size() == 0)
@@ -272,25 +287,7 @@ namespace pgd
 
 			u32 globalMeshletIndex = _meshletOffset + meshletIndex;
 			Meshlet& rMeshlet = _rGeometry.meshlets[globalMeshletIndex];
-
-			for (u32 triangleIndex = 0; triangleIndex < rMeshlet.triangleCount; ++triangleIndex)
-			{
-				u8 localVertexIndex0 = _rGeometry.meshletTriangles[rMeshlet.triangleOffset + 3 * triangleIndex + 0];
-				u8 localVertexIndex1 = _rGeometry.meshletTriangles[rMeshlet.triangleOffset + 3 * triangleIndex + 1];
-				u8 localVertexIndex2 = _rGeometry.meshletTriangles[rMeshlet.triangleOffset + 3 * triangleIndex + 2];
-
-				assert(localVertexIndex0 < rMeshlet.vertexCount);
-				assert(localVertexIndex1 < rMeshlet.vertexCount);
-				assert(localVertexIndex2 < rMeshlet.vertexCount);
-
-				u32 vertexIndex0 = _rGeometry.meshletVertices[rMeshlet.vertexOffset + localVertexIndex0];
-				u32 vertexIndex1 = _rGeometry.meshletVertices[rMeshlet.vertexOffset + localVertexIndex1];
-				u32 vertexIndex2 = _rGeometry.meshletVertices[rMeshlet.vertexOffset + localVertexIndex2];
-
-				rGroup.push_back(vertexIndex0);
-				rGroup.push_back(vertexIndex1);
-				rGroup.push_back(vertexIndex2);
-			}
+			rGroup.push_back(rMeshlet);
 		}
 	}
 }
@@ -471,8 +468,16 @@ static void loadMesh(
 
 	if (_bMeshShadingSupported)
 	{
-		std::vector<pgd::GroupIndicies> groups;
-		groups.push_back(indices);
+		mesh.lodDagNodeOffset = _rGeometry.lodDagNodes.size();
+
+		std::vector<pgd::TriangleGroup> triangleGroups;
+		std::vector<pgd::MeshletGroup> meshletGroups;
+
+		triangleGroups.push_back({
+			.indices = indices,
+			.simplifyError = 0.0f });
+
+		std::map<u32, f32> meshletSimplifyErrors;
 
 		u32 lodIndex = 0;
 		while (true)
@@ -480,24 +485,42 @@ static void loadMesh(
 			u32 globalMeshletOffset = _rGeometry.meshlets.size();
 			std::vector<Meshlet> meshletsPerLOD; // TODO-MILKRU: Inner loop vectors are terrible for memory
 
-			u32 groupIndex = 0; // TODO-MILKRU: Temp
-
 			// Generate and merge meshlets from each group
-			for (pgd::GroupIndicies& rGroup : groups)
+			for (u32 groupIndex = 0; groupIndex < triangleGroups.size(); ++groupIndex)
 			{
-				size_t maxMeshlets = meshopt_buildMeshletsBound(rGroup.size(), kMaxVerticesPerMeshlet, kMaxTrianglesPerMeshlet);
+				pgd::TriangleGroup& rTriangleGroup = triangleGroups[groupIndex];
+
+				size_t maxMeshlets = meshopt_buildMeshletsBound(rTriangleGroup.indices.size(), kMaxVerticesPerMeshlet, kMaxTrianglesPerMeshlet);
 				std::vector<u32> meshletVertices(maxMeshlets * kMaxVerticesPerMeshlet);
 				std::vector<u8> meshletTriangles(maxMeshlets * kMaxTrianglesPerMeshlet * 3);
 				std::vector<Meshlet> meshlets(maxMeshlets);
 
-				u32 meshletCount = buildMeshlets(_rGeometry, rawVertices, rGroup, meshletVertices, meshletTriangles, meshlets);
+				u32 meshletCount = buildMeshlets(_rGeometry, rawVertices, rTriangleGroup.indices, meshletVertices, meshletTriangles, meshlets);
 
-				// TODO-MILKRU: Temp
-				for (u32 meshletIndex = 0; meshletIndex < meshletCount; ++meshletIndex)
+				// Handle DAG leaf nodes
+				//if (meshletGroups.size() > 0)
+				//{
+					// TODO-MILKRU:
+					// Newly produced meshlets should be parents, so meshlets from rMeshletGroup should all point to new meshlets
+					// (each parent meshlet should have the same error, so we should store only one error in this case?!)
+					// TODO-MILKRU: How to handle root node in this case???
+
+					// TODO-MILKRU: Here we need child node error, and parent index (OR EVEN BETTER DIRECTLY PARENT ERROR)
+					// [potential opt: in cs we need to check if proj(pr_err) > acceptable_err && proj(ch_err) <= acceprable_err, could this math op be optimizid such as we need to evaluate proj() only once???]
+					// Make sure that pr_err is always >= ch_err !!!
+					// Every meshlet in a group will automatically have the same simplifyError (verify this)
+					
+					// TODO-MILKRU: Fill DAG where all new meshlets produced from simplified groups point to meshlets from non-simplified group stored in rMeshletGroup
+				//}
+
+				for (u32 localMeshletIndex = 0; localMeshletIndex < meshletCount; ++localMeshletIndex)
 				{
-					meshlets[meshletIndex].groupIndex = groupIndex;
+					u32 meshletIndex = _rGeometry.meshlets.size() + localMeshletIndex;
+					meshletSimplifyErrors[meshletIndex] = rTriangleGroup.simplifyError;
+
+					// TODO-MILKRU: Temp!!!
+					meshlets[localMeshletIndex].groupIndex = groupIndex;
 				}
-				++groupIndex;
 
 				_rGeometry.meshletVertices.insert(_rGeometry.meshletVertices.end(), meshletVertices.begin(), meshletVertices.end());
 				_rGeometry.meshletTriangles.insert(_rGeometry.meshletTriangles.end(), meshletTriangles.begin(), meshletTriangles.end());
@@ -517,43 +540,96 @@ static void loadMesh(
 				break;
 			}
 
-			groups.clear();
+			triangleGroups.clear();
 
 			u32 meshletCount = meshletsPerLOD.size();
 			idx_t groupCount = meshletCount / kTargetGroupSize; // TODO-MILKRU: Maybe always bisect??? In that case groupCount would be 2?
-			groups.resize(groupCount);
-			pgd::groupMeshlets(_rGeometry, globalMeshletOffset, globalMeshletCount, groups);
+
+			triangleGroups.resize(groupCount);
+			meshletGroups.resize(groupCount);
+
+			pgd::groupMeshlets(_rGeometry, globalMeshletOffset, globalMeshletCount, meshletGroups);
 
 			meshletsPerLOD.clear();
 
-			// Simplify existing groups
-			for (pgd::GroupIndicies& rGroup : groups)
+			// Merge group triangles
+			for (u32 groupIndex = 0; groupIndex < meshletGroups.size(); ++groupIndex)
 			{
-				meshopt_optimizeVertexCache(rGroup.data(), rGroup.data(), rGroup.size(), rawVertices.size());
+				pgd::MeshletGroup& rMeshletGroup = meshletGroups[groupIndex];
+				pgd::TriangleGroup& rTriangleGroup = triangleGroups[groupIndex];
+
+				for (Meshlet& rMeshlet : rMeshletGroup)
+				{
+					for (u32 triangleIndex = 0; triangleIndex < rMeshlet.triangleCount; ++triangleIndex)
+					{
+						u8 localVertexIndex0 = _rGeometry.meshletTriangles[rMeshlet.triangleOffset + 3 * triangleIndex + 0];
+						u8 localVertexIndex1 = _rGeometry.meshletTriangles[rMeshlet.triangleOffset + 3 * triangleIndex + 1];
+						u8 localVertexIndex2 = _rGeometry.meshletTriangles[rMeshlet.triangleOffset + 3 * triangleIndex + 2];
+
+						assert(localVertexIndex0 < rMeshlet.vertexCount);
+						assert(localVertexIndex1 < rMeshlet.vertexCount);
+						assert(localVertexIndex2 < rMeshlet.vertexCount);
+
+						u32 vertexIndex0 = _rGeometry.meshletVertices[rMeshlet.vertexOffset + localVertexIndex0];
+						u32 vertexIndex1 = _rGeometry.meshletVertices[rMeshlet.vertexOffset + localVertexIndex1];
+						u32 vertexIndex2 = _rGeometry.meshletVertices[rMeshlet.vertexOffset + localVertexIndex2];
+
+						rTriangleGroup.indices.push_back(vertexIndex0);
+						rTriangleGroup.indices.push_back(vertexIndex1);
+						rTriangleGroup.indices.push_back(vertexIndex2);
+					}
+				}
+			}
+
+			// Simplify existing groups
+			for (u32 groupIndex = 0; groupIndex < triangleGroups.size(); ++groupIndex)
+			{
+				pgd::TriangleGroup& rTriangleGroup = triangleGroups[groupIndex];
+				pgd::MeshletGroup& rMeshletGroup = meshletGroups[groupIndex];
+
+				meshopt_optimizeVertexCache(rTriangleGroup.indices.data(), rTriangleGroup.indices.data(), rTriangleGroup.indices.size(), rawVertices.size());
 
 				// TODO-MILKRU: This is similar like before. Unify
 				f32 threshold = 0.5f; // TODO-MILKRU: We are reducing the number of indices, does this reduce the number of triangles proportionately?
-				size_t targetIndexCount = size_t(rGroup.size() * threshold);
+				size_t targetIndexCount = size_t(rTriangleGroup.indices.size() * threshold);
 				f32 targetError = 1e-2f;
 
 				f32 resultingError; // TODO-MILKRU: Use!
-				// TODO-MILKRU: When to break????????
-				size_t newIndexCount = meshopt_simplify(rGroup.data(), rGroup.data(), rGroup.size(),
+				size_t newIndexCount = meshopt_simplify(rTriangleGroup.indices.data(), rTriangleGroup.indices.data(), rTriangleGroup.indices.size(),
 					&rawVertices[0].position[0], rawVertices.size(), sizeof(RawVertex), targetIndexCount, targetError, &resultingError);
 
-				if (rGroup.size() == newIndexCount)
+				// Fill dag
+				for (u32 localMeshletIndex = 0; localMeshletIndex < rMeshletGroup.size(); ++localMeshletIndex)
 				{
-					// TODO-MILKRU: Temp
-					// TODO-MILKRU: Break outer loop instead???
-					// TODO-MILKRU: Or keep going with different lod levels for different groups???
+					u32 meshletIndex = globalMeshletOffset + localMeshletIndex;
+
+					// TODO-MILKRU: pre-reserve memory for this
+					_rGeometry.lodDagNodes.push_back({
+						.meshletIndex = meshletIndex,
+						.simplifyError = meshletSimplifyErrors[meshletIndex],
+						.simplifyParentError = resultingError }); 
+				}
+
+				if (rTriangleGroup.indices.size() == newIndexCount)
+				{
+					// TODO-MILKRU: Propagate the same group to next LOD level
 					assert(0);
 				}
 
-				rGroup.resize(newIndexCount);
+				rTriangleGroup.indices.resize(newIndexCount);
+				rTriangleGroup.simplifyError = resultingError;
+
+				globalMeshletOffset += rMeshletGroup.size();
 			}
+
+			// TODO-MILKRU: Temp
+			printf("qweqweqwe %d\n", lodIndex);
 
 			++lodIndex;
 		}
+
+		// TODO-MILKRU: Messy
+		mesh.lodDagNodeOffset = _rGeometry.lodDagNodes.size() - mesh.lodDagNodeOffset;
 	}
 
 	_rGeometry.meshes.push_back(mesh);
@@ -607,5 +683,10 @@ GeometryBuffers createGeometryBuffers(
 		.meshesBuffer = createBuffer(_rDevice, {
 			.byteSize = sizeof(Mesh) * geometry.meshes.size(),
 			.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-			.pContents = geometry.meshes.data() }) };
+			.pContents = geometry.meshes.data() }),
+
+		.lodDagNodesBuffer = createBuffer(_rDevice, {
+			.byteSize = sizeof(LodDagNode) * geometry.lodDagNodes.size(),
+			.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+			.pContents = geometry.lodDagNodes.data() }) };
 }

@@ -16,6 +16,7 @@ layout(binding = 0) readonly buffer PerDrawDataVector { PerDrawData perDrawDataV
 layout(binding = 1) readonly buffer DrawCommands { DrawCommand drawCommands[]; };
 layout(binding = 2) readonly buffer Meshlets { Meshlet meshlets[]; };
 layout(binding = 3) readonly buffer Meshes { Mesh meshes[]; };
+layout(binding = 7) readonly buffer LodDagNodes { LodDagNode lodDagNodes[]; };
 
 taskNV out Task
 {
@@ -27,6 +28,13 @@ layout (push_constant) uniform block
     PerFrameData perFrameData;
 };
 
+bool shouldSelectLod(
+	float _error,
+	float _parentError)
+{
+	return true;
+}
+
 void main()
 {
 	uint drawIndex = drawCommands[gl_DrawID].drawIndex;
@@ -34,17 +42,22 @@ void main()
 	
 	Mesh mesh = meshes[perDrawData.meshIndex];
 	
-	uint lodIndex = drawCommands[gl_DrawID].lodIndex;
-	MeshLod meshLod = mesh.lods[lodIndex];
-
 	uint groupThreadIndex = gl_LocalInvocationID.x;
-	uint localMeshletIndex = gl_GlobalInvocationID.x;
-	uint meshletIndex = meshLod.meshletOffset + localMeshletIndex;
+	uint localDagNodeIndex = gl_GlobalInvocationID.x;
+	uint dagNodeIndex = mesh.lodDagNodeOffset + localDagNodeIndex;
 	
-	if (localMeshletIndex >= meshLod.meshletCount)
+	if (localDagNodeIndex >= mesh.lodDagNodeCount)
 	{
 		return;
 	}
+
+	LodDagNode dagNode = lodDagNodes[dagNodeIndex];
+	if (!shouldSelectLod(dagNode.simplifyError, dagNode.simplifyParentError))
+	{
+		return;
+	}
+
+	uint meshletIndex = dagNode.meshletIndex;
 
 	vec3 coneApex = (perDrawData.model * vec4(
 		meshlets[meshletIndex].center[0],

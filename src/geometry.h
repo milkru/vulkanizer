@@ -30,13 +30,26 @@ struct MeshLod
 	u32 meshletCount;
 };
 
+struct LodDagNode
+{
+	u32 meshletIndex;
+
+	f32 simplifyError;
+	f32 simplifyParentError;
+};
+
 struct Mesh
 {
 	u32 vertexOffset;
+
 	f32 center[3];
 	f32 radius;
+
 	u32 lodCount;
 	MeshLod lods[kMaxMeshLods];
+
+	u32 lodDagNodeOffset;
+	u32 lodDagNodeCount;
 };
 
 struct Geometry
@@ -44,6 +57,7 @@ struct Geometry
 	std::vector<Meshlet> meshlets;
 	std::vector<u32> meshletVertices;
 	std::vector<u8> meshletTriangles;
+	std::vector<LodDagNode> lodDagNodes;
 
 	std::vector<Vertex> vertices;
 	std::vector<u32> indices;
@@ -58,9 +72,13 @@ struct GeometryBuffers
 	Buffer vertexBuffer{};
 	Buffer indexBuffer{};
 	Buffer meshesBuffer{};
+	Buffer lodDagNodesBuffer{};
 };
 
 GeometryBuffers createGeometryBuffers(
 	Device& _rDevice,
 	u32 _meshCount,
 	const char** _ppMeshPaths);
+
+// TODO-MIKRU: List:
+// make sure GPU structures are the same as CPU ones

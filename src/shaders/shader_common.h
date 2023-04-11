@@ -55,6 +55,14 @@ struct MeshLod
 	uint meshletCount;
 };
 
+struct LodDagNode
+{
+	uint meshletIndex;
+
+	float simplifyError;
+	float simplifyParentError;
+};
+
 struct Mesh
 {
 	uint vertexOffset;
@@ -64,6 +72,9 @@ struct Mesh
 
 	uint lodCount;
 	MeshLod lods[kMaxMeshLods];
+
+	uint lodDagNodeOffset;
+	uint lodDagNodeCount;
 };
 
 struct PerDrawData

@@ -358,7 +358,8 @@ i32 main(
 					Binding(geometryBuffers.meshesBuffer),
 					Binding(geometryBuffers.meshletVerticesBuffer),
 					Binding(geometryBuffers.meshletTrianglesBuffer),
-					Binding(geometryBuffers.vertexBuffer) }) :
+					Binding(geometryBuffers.vertexBuffer),
+					Binding(geometryBuffers.lodDagNodesBuffer)}) :
 				Bindings({
 					Binding(geometryBuffers.vertexBuffer),
 					Binding(drawBuffers.drawsBuffer),
@@ -614,12 +615,14 @@ i32 main(
 			destroyTextureView(device, rHzbMip);
 		}
 
+		// TODO-MILKRU: Implement deestroyGeometryBuffers in geometry.h
 		{
 			if (device.bMeshShadingPipelineAllowed)
 			{
 				destroyBuffer(device, geometryBuffers.meshletBuffer);
 				destroyBuffer(device, geometryBuffers.meshletVerticesBuffer);
 				destroyBuffer(device, geometryBuffers.meshletTrianglesBuffer);
+				destroyBuffer(device, geometryBuffers.lodDagNodesBuffer);
 			}
 
 			destroyBuffer(device, geometryBuffers.vertexBuffer);
@@ -627,6 +630,7 @@ i32 main(
 			destroyBuffer(device, geometryBuffers.meshesBuffer);
 		}
 
+		// TODO-MILKRU: Implement deestroyDrawBuffers in draw.h
 		{
 			destroyBuffer(device, drawBuffers.drawsBuffer);
 			destroyBuffer(device, drawBuffers.drawCommandsBuffer);
