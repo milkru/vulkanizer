@@ -81,9 +81,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE volk)
 
 set_property(TARGET volk PROPERTY FOLDER "3rdparty")
 
-message("Adding meshoptimizer:")
+# TODO: This is just a temporary repo which adds simplify-with-lock functionality
+# Change back to original once this feature gets implemented
+message("Adding meshoptimizer-cpp:")
 
-set(MESHOPTIMIZER_DIR 3rdparty/meshoptimizer)
+set(MESHOPTIMIZER_DIR 3rdparty/meshoptimizer-cpp)
 
 add_subdirectory(${MESHOPTIMIZER_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${MESHOPTIMIZER_DIR}/src)
