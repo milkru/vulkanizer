@@ -7,6 +7,8 @@
 #include <fast_obj.h>
 #include <meshoptimizer.h>
 
+// TODO-MILKRU: Implement freeze occlusion culling - needed for the book
+
 struct RawVertex
 {
 	f32 position[3];
