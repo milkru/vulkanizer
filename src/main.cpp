@@ -78,6 +78,7 @@ i32 main(
 	EASY_MAIN_THREAD;
 	EASY_PROFILER_ENABLE;
 
+	const char** meshPaths = _argv + 1;
 	u32 meshCount = u32(_argc - 1);
 	if (meshCount == 0)
 	{
@@ -245,7 +246,7 @@ i32 main(
 	destroyShader(device, vertShader);
 	destroyShader(device, hzbDownsampleShader);
 
-	GeometryBuffers geometryBuffers = createGeometryBuffers(device, meshCount, _argv);
+	GeometryBuffers geometryBuffers = createGeometryBuffers(device, meshCount, meshPaths);
 	DrawBuffers drawBuffers = createDrawBuffers(device, meshCount, kMaxDrawCount, kSpawnCubeSize);
 
 	std::array<VkCommandBuffer, kMaxFramesInFlightCount> commandBuffers;

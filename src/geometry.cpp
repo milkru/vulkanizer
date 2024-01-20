@@ -231,7 +231,7 @@ GeometryBuffers createGeometryBuffers(
 
 	for (u32 meshIndex = 0; meshIndex < _meshCount; ++meshIndex)
 	{
-		const char* meshPath = _meshPaths[meshIndex + 1];
+		const char* meshPath = _meshPaths[meshIndex];
 		loadMesh(geometry, meshPath, _rDevice.bMeshShadingPipelineAllowed);
 	}
 
