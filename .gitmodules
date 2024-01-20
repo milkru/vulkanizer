@@ -40,3 +40,7 @@
 	path = 3rdparty/GKlib
 	url = https://github.com/KarypisLab/GKlib.git
 	branch = master
+[submodule "3rdparty/meshoptimizer-cpp"]
+	path = 3rdparty/meshoptimizer-cpp
+	url = https://github.com/Traverse-Research/meshoptimizer-cpp.git
+	branch = vertex-lock
