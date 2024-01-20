@@ -36,10 +36,12 @@
 	path = 3rdparty/METIS
 	url = https://github.com/KarypisLab/METIS.git
 	branch = master
+	ignore = dirty
 [submodule "3rdparty/GKlib"]
 	path = 3rdparty/GKlib
 	url = https://github.com/KarypisLab/GKlib.git
 	branch = master
+	ignore = dirty
 [submodule "3rdparty/meshoptimizer-cpp"]
 	path = 3rdparty/meshoptimizer-cpp
 	url = https://github.com/Traverse-Research/meshoptimizer-cpp.git
