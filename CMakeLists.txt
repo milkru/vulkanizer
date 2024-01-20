@@ -183,6 +183,7 @@ set(GKLIB_DIR 3rdparty/GKlib)
 file(WRITE ${METIS_DIR}/build/xinclude/CMakeLists.txt "")
 file(WRITE ${METIS_DIR}/programs/CMakeLists.txt "")
 file(WRITE ${GKLIB_DIR}/test/CMakeLists.txt "")
+file(WRITE ${CMAKE_SOURCE_DIR}/conf/check_thread_storage.c "")
 
 add_subdirectory(${METIS_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${METIS_DIR}/include)
