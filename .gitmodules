@@ -36,3 +36,7 @@
 	path = 3rdparty/CRCpp
 	url = https://github.com/d-bahr/CRCpp
 	branch = master
+[submodule "3rdparty/METIS"]
+	path = 3rdparty/METIS
+	url = https://github.com/KarypisLab/METIS.git
+	branch = master
