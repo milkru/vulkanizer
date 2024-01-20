@@ -7,6 +7,8 @@
 #include <fast_obj.h>
 #include <meshoptimizer.h>
 
+// TODO-MILKRU: Implement occlusion culling freeze for the book visualization
+
 struct RawVertex
 {
 	f32 position[3];
