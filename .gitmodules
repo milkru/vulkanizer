@@ -10,10 +10,6 @@
 	path = 3rdparty/glm
 	url = https://github.com/g-truc/glm
 	branch = master
-[submodule "3rdparty/meshoptimizer"]
-	path = 3rdparty/meshoptimizer
-	url = https://github.com/zeux/meshoptimizer
-	branch = master
 [submodule "3rdparty/easy_profiler"]
 	path = 3rdparty/easy_profiler
 	url = https://github.com/yse/easy_profiler
@@ -35,4 +31,16 @@
 [submodule "3rdparty/CRCpp"]
 	path = 3rdparty/CRCpp
 	url = https://github.com/d-bahr/CRCpp
+	branch = master
+[submodule "3rdparty/meshoptimizer-cpp"]
+	path = 3rdparty/meshoptimizer-cpp
+	url = https://github.com/Traverse-Research/meshoptimizer-cpp.git
+	branch = vertex-lock
+[submodule "3rdparty/METIS"]
+	path = 3rdparty/METIS
+	url = https://github.com/KarypisLab/METIS.git
+	branch = master
+[submodule "3rdparty/GKlib"]
+	path = 3rdparty/GKlib
+	url = https://github.com/KarypisLab/GKlib.git
 	branch = master

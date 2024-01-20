@@ -10,15 +10,11 @@ DrawBuffers createDrawBuffers(
 	u32 _spawnCubeSize)
 {
 	EASY_BLOCK("InitializeDraws");
-	u32 sum = 0;
+
 	std::vector<PerDrawData> perDrawDataVector(_maxDrawCount);
 	for (u32 drawIndex = 0; drawIndex < _maxDrawCount; ++drawIndex)
 	{
 		PerDrawData perDrawData = { .meshIndex = drawIndex % _meshCount };
-
-		u32 ts[] = { /*kitten*/4952 , /*dragon*/146325 , /*bunny*/24126 };
-
-		sum += ts[perDrawData.meshIndex];
 
 		auto randomFloat = []()
 		{
@@ -38,7 +34,7 @@ DrawBuffers createDrawBuffers(
 
 		perDrawDataVector[drawIndex] = perDrawData;
 	}
-	printf("%d\n", sum);
+
 	DrawBuffers drawBuffers = {
 		.drawsBuffer = createBuffer(_rDevice, {
 			.byteSize = sizeof(PerDrawData) * perDrawDataVector.size(),

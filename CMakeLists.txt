@@ -23,6 +23,8 @@ file(GLOB_RECURSE SRC_FILES "src/*.h" "src/*.cpp")
 file(GLOB_RECURSE GLSL_SRC_FILES "src/shaders/*.comp" "src/shaders/*.task" "src/shaders/*.mesh" "src/shaders/*.vert" "src/shaders/*.frag")
 source_group("Shader Files" FILES ${GLSL_SRC_FILES})
 
+add_definitions(-DIDXTYPEWIDTH=32 -DREALTYPEWIDTH=32)
+
 include_directories(src)
 add_executable(${PROJECT_NAME} ${SRC_FILES} ${GLSL_SRC_FILES})
 
@@ -81,9 +83,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE volk)
 
 set_property(TARGET volk PROPERTY FOLDER "3rdparty")
 
-message("Adding meshoptimizer:")
+# Temporarily using this repo until vertex locking feature comes to the original repo
+message("Adding meshoptimizer-cpp:")
 
-set(MESHOPTIMIZER_DIR 3rdparty/meshoptimizer)
+set(MESHOPTIMIZER_DIR 3rdparty/meshoptimizer-cpp)
 
 add_subdirectory(${MESHOPTIMIZER_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${MESHOPTIMIZER_DIR}/src)
@@ -170,3 +173,25 @@ set(BUILD_TEST OFF CACHE BOOL "")
 add_subdirectory(${CRC_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CRC_DIR}/inc)
 target_link_libraries(${PROJECT_NAME} PRIVATE CRCpp)
+
+message("Adding METIS:")
+
+set(METIS_DIR 3rdparty/METIS)
+set(GKLIB_DIR 3rdparty/GKlib)
+
+# Avoids editing 3rdparty projects
+file(WRITE ${METIS_DIR}/build/xinclude/CMakeLists.txt "")
+file(WRITE ${METIS_DIR}/programs/CMakeLists.txt "")
+file(WRITE ${GKLIB_DIR}/test/CMakeLists.txt "")
+
+add_subdirectory(${METIS_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${METIS_DIR}/include)
+target_link_libraries(${PROJECT_NAME} PRIVATE metis)
+
+add_subdirectory(${GKLIB_DIR})
+target_include_directories(metis PRIVATE ${GKLIB_DIR})
+target_include_directories(metis PRIVATE ${METIS_DIR}/include)
+target_link_libraries(metis PRIVATE GKlib)
+
+set_property(TARGET metis PROPERTY FOLDER "3rdparty")
+set_property(TARGET GKlib PROPERTY FOLDER "3rdparty")

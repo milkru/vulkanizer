@@ -7,6 +7,8 @@
 #include <fast_obj.h>
 #include <meshoptimizer.h>
 
+// TODO-MILKRU: Implement occlusion culling freeze for the book visualization
+
 struct RawVertex
 {
 	f32 position[3];
@@ -229,7 +231,7 @@ GeometryBuffers createGeometryBuffers(
 
 	for (u32 meshIndex = 0; meshIndex < _meshCount; ++meshIndex)
 	{
-		const char* meshPath = _meshPaths[meshIndex + 1];
+		const char* meshPath = _meshPaths[meshIndex];
 		loadMesh(geometry, meshPath, _rDevice.bMeshShadingPipelineAllowed);
 	}
 
