@@ -23,8 +23,6 @@ file(GLOB_RECURSE SRC_FILES "src/*.h" "src/*.cpp")
 file(GLOB_RECURSE GLSL_SRC_FILES "src/shaders/*.comp" "src/shaders/*.task" "src/shaders/*.mesh" "src/shaders/*.vert" "src/shaders/*.frag")
 source_group("Shader Files" FILES ${GLSL_SRC_FILES})
 
-add_definitions(-DIDXTYPEWIDTH=32 -DREALTYPEWIDTH=32)
-
 include_directories(src)
 add_executable(${PROJECT_NAME} ${SRC_FILES} ${GLSL_SRC_FILES})
 
@@ -174,16 +172,10 @@ add_subdirectory(${CRC_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CRC_DIR}/inc)
 target_link_libraries(${PROJECT_NAME} PRIVATE CRCpp)
 
-message("Adding METIS:")
+message("Adding METIS and GKlib:")
 
 set(METIS_DIR 3rdparty/METIS)
 set(GKLIB_DIR 3rdparty/GKlib)
-
-# Avoids editing 3rdparty projects
-file(WRITE ${METIS_DIR}/build/xinclude/CMakeLists.txt "")
-file(WRITE ${METIS_DIR}/programs/CMakeLists.txt "")
-file(WRITE ${GKLIB_DIR}/test/CMakeLists.txt "")
-file(WRITE ${CMAKE_SOURCE_DIR}/conf/check_thread_storage.c "")
 
 add_subdirectory(${METIS_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${METIS_DIR}/include)
