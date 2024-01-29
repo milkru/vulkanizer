@@ -1,7 +1,7 @@
 #include "camera.h"
 #include "utils.h"
 #include "window.h"
-#include "shaders/shader_constants.h"
+#include "shaders/shader_interop.h"
 
 static v2 getLookDirection(
 	GLFWwindow* _pWindow)

@@ -10,7 +10,7 @@
 #include "gui.h"
 #include "window.h"
 #include "gpu_profiler.h"
-#include "shaders/shader_constants.h"
+#include "shaders/shader_interop.h"
 
 #include <algorithm>
 #include <stdio.h>

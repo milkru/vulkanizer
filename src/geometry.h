@@ -5,6 +5,10 @@ struct Vertex
 	u16 position[3];
 	u8 normal[4];
 	u16 texCoord[2];
+
+#ifdef VERTEX_COLOR
+	u16 color[3];
+#endif // VERTEX_COLOR
 };
 
 struct Meshlet

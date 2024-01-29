@@ -1,6 +1,6 @@
 #version 450
 
-#include "shader_constants.h"
+#include "shader_interop.h"
 
 layout(local_size_x = kShaderGroupSizeNV) in;
 layout(local_size_y = kShaderGroupSizeNV) in;

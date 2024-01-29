@@ -43,4 +43,9 @@ void main()
 	
 	float shade = dot(normal, normalize(perFrameData.cameraPosition - worldPosition.xyz));
     outColor = shade * (0.5 + 0.5 * normal);
+
+	outColor = shade * vec3(
+		vertices[gl_VertexIndex].color[0],
+		vertices[gl_VertexIndex].color[1],
+		vertices[gl_VertexIndex].color[2]);
 }

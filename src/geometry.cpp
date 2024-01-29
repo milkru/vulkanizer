@@ -1,7 +1,7 @@
 #include "core/device.h"
 #include "core/buffer.h"
 
-#include "shaders/shader_constants.h"
+#include "shaders/shader_interop.h"
 #include "geometry.h"
 
 #include <fast_obj.h>
@@ -14,6 +14,10 @@ struct RawVertex
 	f32 position[3];
 	f32 normal[3];
 	f32 texCoord[2];
+
+#ifdef VERTEX_COLOR
+	f32 color[3];
+#endif // VERTEX_COLOR
 };
 
 // TODO-MILKRU: Implement a more conservative way of calculating bounding sphere?
@@ -53,6 +57,12 @@ static Vertex quantizeVertex(
 	// TODO-MILKRU: To unorm.
 	vertex.texCoord[0] = meshopt_quantizeHalf(_rRawVertex.texCoord[0]);
 	vertex.texCoord[1] = meshopt_quantizeHalf(_rRawVertex.texCoord[1]);
+
+#ifdef VERTEX_COLOR
+	vertex.color[0] = meshopt_quantizeHalf(1.0f);
+	vertex.color[1] = meshopt_quantizeHalf(0.0f);
+	vertex.color[2] = meshopt_quantizeHalf(1.0f);
+#endif // VERTEX_COLOR
 
 	return vertex;
 }

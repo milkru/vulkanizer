@@ -10,7 +10,7 @@
 
 #include "window.h"
 #include "camera.h"
-#include "shaders/shader_constants.h"
+#include "shaders/shader_interop.h"
 #include "geometry.h"
 #include "draw.h"
 #include "gui.h"
