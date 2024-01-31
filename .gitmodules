@@ -30,13 +30,13 @@
 	branch = master
 [submodule "3rdparty/VulkanMemoryAllocator"]
 	path = 3rdparty/VulkanMemoryAllocator
-	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
-	branch = master
+	url = https://github.com/saccharineboi/VulkanMemoryAllocator
+	branch = unix-fix
 [submodule "3rdparty/CRCpp"]
 	path = 3rdparty/CRCpp
 	url = https://github.com/d-bahr/CRCpp
 	branch = master
 [submodule "3rdparty/METIS"]
 	path = 3rdparty/METIS
-	url = https://github.com/milkru/METIS
-	branch = master
+	url = https://github.com/saccharineboi/METIS
+	branch = unix-fix

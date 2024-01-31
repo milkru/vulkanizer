@@ -1,10 +1,20 @@
 cmake_minimum_required(VERSION 3.16)
-
 project(vulkanizer)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 message("Compiling Shaders:")
 
-set(GLSL_COMPILER "$ENV{VULKAN_SDK}/Bin/glslc.exe")
+if (WIN32)
+    set(GLSL_COMPILER "$ENV{VULKAN_SDK}/Bin/glslc.exe")
+elseif (UNIX AND NOT APPLE)
+    find_program(GLSL_COMPILER_PATH "glslc")
+    if (NOT GLSL_COMPILER_PATH)
+        message(FATAL_ERROR "glslc has not been found")
+    endif ()
+    set(GLSL_COMPILER ${GLSL_COMPILER_PATH})
+endif ()
 
 file(GLOB_RECURSE GLSL_SRC_FILES "src/shaders/*.comp" "src/shaders/*.task" "src/shaders/*.mesh" "src/shaders/*.vert" "src/shaders/*.frag")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/shaders/")
@@ -26,8 +36,7 @@ source_group("Shader Files" FILES ${GLSL_SRC_FILES})
 include_directories(src)
 add_executable(${PROJECT_NAME} ${SRC_FILES} ${GLSL_SRC_FILES})
 
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD ${CMAKE_CXX_STANDARD})
 
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG_>)

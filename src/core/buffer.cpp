@@ -1,6 +1,10 @@
 #include "device.h"
 #include "buffer.h"
 
+#ifndef _MSC_VER
+#include <cstring>
+#endif
+
 Buffer createBuffer(
 	Device& _rDevice,
 	BufferDesc _desc)
