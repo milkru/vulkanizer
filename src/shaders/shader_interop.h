@@ -9,6 +9,7 @@ const int kShaderGroupSizeNV = 32;
 const int kMaxVerticesPerMeshlet = 64;
 const int kMaxTrianglesPerMeshlet = 124;
 const int kMaxMeshLods = 12;
+const int kMaxMeshSubsets = 4;
 const int kFrustumPlaneCount = 5;
 
 #endif // SHADER_INTEROP_H

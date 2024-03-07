@@ -2,43 +2,49 @@
 
 struct Vertex
 {
-	u16 position[3];
-	u8 normal[4];
-	u16 texCoord[2];
+	u16 position[3] = {};
+	u8 normal[4] = {};
+	u16 texCoord[2] = {};
 
 #ifdef VERTEX_COLOR
-	u16 color[3];
+	u16 color[3] = {};
 #endif // VERTEX_COLOR
 };
 
 struct Meshlet
 {
-	u32 vertexOffset;
-	u32 triangleOffset;
-	u32 vertexCount;
-	u32 triangleCount;
+	u32 vertexOffset = 0;
+	u32 triangleOffset = 0;
+	u32 vertexCount = 0;
+	u32 triangleCount = 0;
 
-	f32 center[3];
-	f32 radius;
-	i8 coneAxis[3];
-	i8 coneCutoff;
+	f32 center[3] = {};
+	f32 radius = 0.0f;
+	i8 coneAxis[3] = {};
+	i8 coneCutoff = 0;
 };
 
 struct MeshLod
 {
-	u32 indexCount;
-	u32 firstIndex;
-	u32 meshletOffset;
-	u32 meshletCount;
+	u32 indexCount = 0;
+	u32 firstIndex = 0;
+	u32 meshletOffset = 0;
+	u32 meshletCount = 0;
+};
+
+struct MeshSubset
+{
+	u32 vertexOffset = 0;
+	u32 lodCount = 0;
+	MeshLod lods[kMaxMeshLods] = {};
 };
 
 struct Mesh
 {
-	u32 vertexOffset;
-	f32 center[3];
-	f32 radius;
-	u32 lodCount;
-	MeshLod lods[kMaxMeshLods];
+	f32 center[3] = {};
+	f32 radius = 0.0f;
+	u32 subsetCount = 0;
+	MeshSubset subsets[kMaxMeshSubsets] = {};
 };
 
 struct Geometry
@@ -62,7 +68,13 @@ struct GeometryBuffers
 	Buffer meshesBuffer{};
 };
 
+void loadMesh(
+	const char* _pFilePath,
+	bool _bMeshShadingSupported,
+	_Out_ Geometry& _rGeometry);
+
 GeometryBuffers createGeometryBuffers(
 	Device& _rDevice,
+	Geometry& _rGeometry,
 	u32 _meshCount,
 	const char** _meshPaths);

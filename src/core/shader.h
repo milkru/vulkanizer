@@ -11,7 +11,7 @@ struct Shader
 
 struct ShaderDesc
 {
-	const char* pPath = "";		  // Relative shader file path.
+	const char* pPath = "";       // Relative shader file path.
 	const char* pEntry = "main";  // Shader entry point.
 };
 

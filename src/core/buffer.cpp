@@ -5,8 +5,8 @@ Buffer createBuffer(
 	Device& _rDevice,
 	BufferDesc _desc)
 {
-	assert(_desc.byteSize > 0u);
-	assert(_desc.usage != 0u);
+	assert(_desc.byteSize > 0);
+	assert(_desc.usage != 0);
 
 	if (_desc.pContents)
 	{
@@ -24,7 +24,7 @@ Buffer createBuffer(
 	// This enables only sequential writes into this memory,
 	// so if we end up needing random access, use VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT.
 	allocationCreateInfo.flags = _desc.access == MemoryAccess::Host ?
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT : 0u;
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT : 0;
 
 	Buffer buffer = { .byteSize = _desc.byteSize };
 
@@ -97,10 +97,10 @@ void bufferBarrier(
 		_commandBuffer,
 		_srcStageMask,
 		_dstStageMask,
-		0u,
-		0u, nullptr,
-		1u, &memoryBarrier,
-		0u, nullptr);
+		0,
+		0, nullptr,
+		1, &memoryBarrier,
+		0, nullptr);
 }
 
 void fillBuffer(
@@ -117,7 +117,7 @@ void fillBuffer(
 		_srcAccessMask, VK_ACCESS_TRANSFER_WRITE_BIT,
 		_srcStageMask, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
-	vkCmdFillBuffer(_commandBuffer, _rBuffer.resource, 0u, _rBuffer.byteSize, _value);
+	vkCmdFillBuffer(_commandBuffer, _rBuffer.resource, 0, _rBuffer.byteSize, _value);
 
 	bufferBarrier(_commandBuffer, _rDevice, _rBuffer,
 		VK_ACCESS_TRANSFER_WRITE_BIT, _dstAccessMask,

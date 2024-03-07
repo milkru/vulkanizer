@@ -20,7 +20,7 @@ struct QueryPool
 struct QueryPoolDesc
 {
 	VkQueryType type = VK_QUERY_TYPE_MAX_ENUM;  // Query type allocated in the pool.
-	u32 queryCount = 0u;					    // Query pool capacity.
+	u32 queryCount = 0;                         // Query pool capacity.
 };
 
 QueryPool createQueryPool(

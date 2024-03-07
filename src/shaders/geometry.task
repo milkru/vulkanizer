@@ -33,9 +33,11 @@ void main()
 	PerDrawData perDrawData = perDrawDataVector[drawIndex];
 	
 	Mesh mesh = meshes[perDrawData.meshIndex];
+	uint subsetIndex = drawCommands[gl_DrawID].subsetIndex;
+	MeshSubset subset = mesh.subsets[subsetIndex];
 	
 	uint lodIndex = drawCommands[gl_DrawID].lodIndex;
-	MeshLod meshLod = mesh.lods[lodIndex];
+	MeshLod meshLod = subset.lods[lodIndex];
 
 	uint groupThreadIndex = gl_LocalInvocationID.x;
 	uint localMeshletIndex = gl_GlobalInvocationID.x;

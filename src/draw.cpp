@@ -1,27 +1,37 @@
 #include "core/device.h"
 #include "core/buffer.h"
 
+#include "shaders/shader_interop.h"
+#include "geometry.h"
 #include "draw.h"
 
 DrawBuffers createDrawBuffers(
 	Device& _rDevice,
+	Geometry& _rGeometry,
 	u32 _meshCount,
 	u32 _maxDrawCount,
 	u32 _spawnCubeSize)
 {
-	EASY_BLOCK("InitializeDraws");
+	EASY_BLOCK("InitializeDrawBuffers");
 
-	std::vector<PerDrawData> perDrawDataVector(_maxDrawCount);
+	std::vector<PerDrawData> perDrawDataVector;
+	perDrawDataVector.reserve(_maxDrawCount);
+
+	u32 drawCommandCount = 0;
 	for (u32 drawIndex = 0; drawIndex < _maxDrawCount; ++drawIndex)
 	{
-		PerDrawData perDrawData = { .meshIndex = drawIndex % _meshCount };
+		u32 meshIndex = drawIndex % _meshCount;
+		Mesh& mesh = _rGeometry.meshes[meshIndex];
 
 		auto randomFloat = []()
 		{
 			return f32(rand()) / RAND_MAX;
 		};
 
-		// TODO-MILKRU: Multiply meshlet/mesh bounding spheres by scale.
+		PerDrawData perDrawData = {
+			.meshIndex = meshIndex };
+
+		// TODO-MILKRU: Multiply meshlet/mesh bounding spheres by scale. ON SHADER SIDE, BECAUSE SCALE CAN BE DYNAMIC.
 		perDrawData.model = glm::scale(m4(1.0f), v3(1.0f));
 
 		perDrawData.model = glm::rotate(perDrawData.model,
@@ -32,17 +42,19 @@ DrawBuffers createDrawBuffers(
 			_spawnCubeSize * (randomFloat() - 0.5f),
 			_spawnCubeSize * (randomFloat() - 0.5f) });
 
-		perDrawDataVector[drawIndex] = perDrawData;
+		perDrawDataVector.push_back(perDrawData);
+		drawCommandCount += mesh.subsetCount;
 	}
 
 	DrawBuffers drawBuffers = {
+		.maxDrawCommandCount = drawCommandCount,
 		.drawsBuffer = createBuffer(_rDevice, {
 			.byteSize = sizeof(PerDrawData) * perDrawDataVector.size(),
 			.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 			.pContents = perDrawDataVector.data() }),
 
 		.drawCommandsBuffer = createBuffer(_rDevice, {
-			.byteSize = sizeof(DrawCommand) * _maxDrawCount,
+			.byteSize = 2 * sizeof(DrawCommand) * perDrawDataVector.size(),
 			.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT }),
 
 		.drawCountBuffer = createBuffer(_rDevice, {
@@ -55,10 +67,10 @@ DrawBuffers createDrawBuffers(
 
 	immediateSubmit(_rDevice, [&](VkCommandBuffer _commandBuffer)
 		{
-			fillBuffer(_commandBuffer, _rDevice, drawBuffers.drawCountBuffer, 0u,
+			fillBuffer(_commandBuffer, _rDevice, drawBuffers.drawCountBuffer, 0,
 				VK_ACCESS_NONE, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
 
-			fillBuffer(_commandBuffer, _rDevice, drawBuffers.visibilityBuffer, 0u,
+			fillBuffer(_commandBuffer, _rDevice, drawBuffers.visibilityBuffer, 0,
 				VK_ACCESS_NONE, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
 		});
 

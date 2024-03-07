@@ -28,14 +28,14 @@ const bool kbEnableValidationLayers = false;
 
 const bool kbEnableMeshShadingPipeline = true;
 
-const u32 kPreferredSwapchainImageCount = 2u;
+const u32 kPreferredSwapchainImageCount = 2;
 const bool kbEnableVSync = false;
 
-const u32 kWindowWidth = 1280u;
-const u32 kWindowHeight = 720u;
+const u32 kWindowWidth = 1280;
+const u32 kWindowHeight = 720;
 
-const u32 kMaxDrawCount = 100'000u;
-const f32 kSpawnCubeSize = 100.0f;
+const u32 kMaxDrawCount = 10; // 100'000;
+const f32 kSpawnCubeSize = 4.0f; // 100.0f;
 
 static Texture createDepthTexture(
 	Device& _rDevice,
@@ -61,7 +61,7 @@ static Texture createHzbTexture(
 	return createTexture(_rDevice, {
 		.width = _size,
 		.height = _size,
-		.mipCount = u32(glm::log2(f32(_size))) + 1u,
+		.mipCount = u32(glm::log2(f32(_size))) + 1,
 		.format = VK_FORMAT_R16_SFLOAT,
 		.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
 		.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -99,7 +99,7 @@ i32 main(
 
 	Texture depthTexture{};
 
-	u32 hzbSize = 0u;
+	u32 hzbSize = 0;
 	Texture hzb{};
 	std::vector<Texture> hzbMips;
 
@@ -154,7 +154,7 @@ i32 main(
 			{
 				hzbMips.push_back(createTextureView(device, {
 					.mipIndex = mipIndex,
-					.mipCount = 1u,
+					.mipCount = 1,
 					.sampler = {
 						.filterMode = VK_FILTER_LINEAR,
 						.reductionMode = VK_SAMPLER_REDUCTION_MODE_MIN },
@@ -246,8 +246,19 @@ i32 main(
 	destroyShader(device, vertShader);
 	destroyShader(device, hzbDownsampleShader);
 
-	GeometryBuffers geometryBuffers = createGeometryBuffers(device, meshCount, meshPaths);
-	DrawBuffers drawBuffers = createDrawBuffers(device, meshCount, kMaxDrawCount, kSpawnCubeSize);
+	GeometryBuffers geometryBuffers;
+	DrawBuffers drawBuffers;
+	{
+		Geometry geometry{};
+		for (u32 meshIndex = 0; meshIndex < meshCount; ++meshIndex)
+		{
+			const char* meshPath = meshPaths[meshIndex];
+			loadMesh(meshPath, device.bMeshShadingPipelineAllowed, geometry);
+		}
+
+		geometryBuffers = createGeometryBuffers(device, geometry, meshCount, meshPaths);
+		drawBuffers = createDrawBuffers(device, geometry, meshCount, kMaxDrawCount, kSpawnCubeSize);
+	}
 
 	std::array<VkCommandBuffer, kMaxFramesInFlightCount> commandBuffers;
 	for (VkCommandBuffer& rCommandBuffer : commandBuffers)
@@ -263,7 +274,7 @@ i32 main(
 
 	gpu::profiler::initialize(device);
 
-	alignas(16) struct
+	struct
 	{
 		m4 view;
 		m4 projection;
@@ -279,7 +290,19 @@ i32 main(
 		i8 bEnableMeshOcclusionCulling;
 		i8 bEnableMeshletConeCulling;
 		i8 bEnableMeshletFrustumCulling;
+
+		u32 padding0;
+		u32 padding1;
 	} perFrameData = {};
+
+	//////////////////////////////////////////////////
+	// TODO-MILKRU: Make it dependent on flight frames
+	Buffer perFrameDataBuffer = createBuffer(device, {
+			.byteSize = sizeof(perFrameData),
+			.access = MemoryAccess::Host,
+			.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			.pContents = &perFrameData });
+	//////////////////////////////////////////////////
 
 	VkPhysicalDeviceProperties physicalDeviceProperties;
 	vkGetPhysicalDeviceProperties(device.physicalDevice, &physicalDeviceProperties);
@@ -315,13 +338,16 @@ i32 main(
 				Binding(drawBuffers.drawCommandsBuffer),
 				Binding(drawBuffers.drawCountBuffer),
 				Binding(drawBuffers.visibilityBuffer),
-				Binding(hzb, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) },
-			.pushConstants = {
-				.byteSize = sizeof(perFrameData),
-				.pData = &perFrameData } },
+				Binding(hzb, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+				Binding(perFrameDataBuffer) }
+			//	,
+			//.pushConstants = {
+			//	.byteSize = sizeof(perFrameData),
+			//	.pData = &perFrameData }
+			},
 				[&]()
 			{
-				vkCmdDispatch(_commandBuffer, divideRoundingUp(kMaxDrawCount, kShaderGroupSizeNV), 1u, 1u);
+				vkCmdDispatch(_commandBuffer, divideRoundingUp(kMaxDrawCount, kShaderGroupSizeNV), 1, 1);
 			});
 	};
 
@@ -372,14 +398,14 @@ i32 main(
 				if (_bMeshShadingPipelineEnabled)
 				{
 					vkCmdDrawMeshTasksIndirectCountNV(_commandBuffer, drawBuffers.drawCommandsBuffer.resource,
-						offsetof(DrawCommand, taskCount), drawBuffers.drawCountBuffer.resource, 0u, kMaxDrawCount, sizeof(DrawCommand));
+						offsetof(DrawCommand, taskCount), drawBuffers.drawCountBuffer.resource, 0, drawBuffers.maxDrawCommandCount, sizeof(DrawCommand));
 				}
 				else
 				{
-					vkCmdBindIndexBuffer(_commandBuffer, geometryBuffers.indexBuffer.resource, 0u, VK_INDEX_TYPE_UINT32);
+					vkCmdBindIndexBuffer(_commandBuffer, geometryBuffers.indexBuffer.resource, 0, VK_INDEX_TYPE_UINT32);
 
 					vkCmdDrawIndexedIndirectCount(_commandBuffer, drawBuffers.drawCommandsBuffer.resource,
-						offsetof(DrawCommand, indexCount), drawBuffers.drawCountBuffer.resource, 0u, kMaxDrawCount, sizeof(DrawCommand));
+						offsetof(DrawCommand, indexCount), drawBuffers.drawCountBuffer.resource, 0, drawBuffers.maxDrawCommandCount, sizeof(DrawCommand));
 				}
 			});
 	};
@@ -389,11 +415,11 @@ i32 main(
 	{
 		GPU_BLOCK(_commandBuffer, "BuildHzbPass");
 
-		for (u32 mipIndex = 0u; mipIndex < hzb.mipCount; ++mipIndex)
+		for (u32 mipIndex = 0; mipIndex < hzb.mipCount; ++mipIndex)
 		{
 			u32 hzbMipSize = hzbSize >> mipIndex;
 
-			Texture& rInputTexture = mipIndex == 0u ? depthTexture : hzbMips[mipIndex - 1u];
+			Texture& rInputTexture = mipIndex == 0 ? depthTexture : hzbMips[mipIndex - 1];
 
 			executePass(_commandBuffer, {
 				.pipeline = hzbDownsamplePipeline,
@@ -405,8 +431,8 @@ i32 main(
 					.pData = &hzbMipSize } },
 					[&]()
 				{
-					iv2 groupCount = iv2(divideRoundingUp(hzbMipSize, kShaderGroupSizeNV));
-					vkCmdDispatch(_commandBuffer, groupCount.x, groupCount.y, 1u);
+					iv2 groupCount = iv2(divideRoundingUp(hzbMipSize, kShaderGroupSizeNV)); // TODO-MPG: Use ceil instead
+					vkCmdDispatch(_commandBuffer, groupCount.x, groupCount.y, 1);
 				});
 
 			textureBarrier(_commandBuffer, hzbMips[mipIndex],
@@ -433,7 +459,7 @@ i32 main(
 
 		{
 			EASY_BLOCK("WaitForFences");
-			VK_CALL(vkWaitForFences(device.device, 1u, &framePacingState.inFlightFence, VK_TRUE, UINT64_MAX));
+			VK_CALL(vkWaitForFences(device.device, 1, &framePacingState.inFlightFence, VK_TRUE, UINT64_MAX));
 		}
 
 		VkSurfaceCapabilitiesKHR surfaceCapabilities;
@@ -441,7 +467,7 @@ i32 main(
 
 		VkExtent2D currentExtent = surfaceCapabilities.currentExtent;
 
-		if (currentExtent.width == 0u || currentExtent.height == 0u)
+		if (currentExtent.width == 0 || currentExtent.height == 0)
 		{
 			continue;
 		}
@@ -455,7 +481,7 @@ i32 main(
 			continue;
 		}
 
-		VK_CALL(vkResetFences(device.device, 1u, &framePacingState.inFlightFence));
+		VK_CALL(vkResetFences(device.device, 1, &framePacingState.inFlightFence));
 
 		u32 currentSwapchainImageIndex;
 		VK_CALL(vkAcquireNextImageKHR(device.device, swapchain.swapchain, UINT64_MAX,
@@ -479,22 +505,24 @@ i32 main(
 			perFrameData.lodTransitionStep = 1.25f;
 			perFrameData.forcedLod = settings.bForceMeshLodEnabled ? settings.forcedLod : -1;
 			perFrameData.hzbSize = hzbSize;
-			perFrameData.bEnableMeshFrustumCulling = settings.bMeshFrustumCullingEnabled ? 1u : 0u;
-			perFrameData.bEnableMeshOcclusionCulling = settings.bMeshOcclusionCullingEnabled ? 1u : 0u;
-			perFrameData.bEnableMeshletConeCulling = settings.bMeshletConeCullingEnabled ? 1u : 0u;
-			perFrameData.bEnableMeshletFrustumCulling = settings.bMeshletFrustumCullingEnabled ? 1u : 0u;
+			perFrameData.bEnableMeshFrustumCulling = settings.bMeshFrustumCullingEnabled ? 1 : 0;
+			perFrameData.bEnableMeshOcclusionCulling = settings.bMeshOcclusionCullingEnabled ? 1 : 0;
+			perFrameData.bEnableMeshletConeCulling = settings.bMeshletConeCullingEnabled ? 1 : 0;
+			perFrameData.bEnableMeshletFrustumCulling = settings.bMeshletFrustumCullingEnabled ? 1 : 0;
 
 			if (!settings.bFreezeCameraEnabled)
 			{
 				perFrameData.cameraPosition = camera.position;
 				getFrustumPlanes(camera, perFrameData.frustumPlanes);
 			}
+
+			memcpy(perFrameDataBuffer.pMappedData, &perFrameData, sizeof(perFrameData));
 		}
 
 		{
 			EASY_BLOCK("Frame");
 
-			vkResetCommandBuffer(commandBuffer, 0u);
+			vkResetCommandBuffer(commandBuffer, 0);
 			VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 
 			VK_CALL(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
@@ -510,7 +538,7 @@ i32 main(
 						VK_ACCESS_NONE, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 						VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-					fillBuffer(commandBuffer, device, drawBuffers.drawCountBuffer, 0u,
+					fillBuffer(commandBuffer, device, drawBuffers.drawCountBuffer, 0,
 						VK_ACCESS_INDIRECT_COMMAND_READ_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
 						VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
@@ -531,6 +559,7 @@ i32 main(
 					geometryPass(commandBuffer, currentSwapchainImageIndex, bMeshShadingPipelineEnabled, /*bPrepass*/ true);
 				}
 
+				if (!settings.bFreezeCameraEnabled)
 				{
 					textureBarrier(commandBuffer, hzb,
 						VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
@@ -540,7 +569,7 @@ i32 main(
 					textureBarrier(commandBuffer, depthTexture,
 						VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 						VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-						VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,	VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+						VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
 					buildHzbPass(commandBuffer);
 
@@ -551,7 +580,7 @@ i32 main(
 				}
 
 				{
-					fillBuffer(commandBuffer, device, drawBuffers.drawCountBuffer, 0u,
+					fillBuffer(commandBuffer, device, drawBuffers.drawCountBuffer, 0,
 						VK_ACCESS_INDIRECT_COMMAND_READ_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
 						VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
@@ -602,6 +631,10 @@ i32 main(
 
 		gui::terminate();
 		gpu::profiler::terminate(device);
+
+		//////////////////////////////////////////////////
+		destroyBuffer(device, perFrameDataBuffer);
+		//////////////////////////////////////////////////
 
 		for (FramePacingState& rFramePacingState : framePacingStates)
 		{

@@ -10,7 +10,7 @@ Binding::Binding(
 {
 	bufferInfo = {
 		.buffer = _rBuffer.resource,
-		.offset = 0u,
+		.offset = 0,
 		.range = _rBuffer.byteSize };
 }
 
@@ -83,10 +83,10 @@ void executePass(
 				.minDepth = 0.0f,
 				.maxDepth = 1.0f };
 
-			vkCmdSetViewport(_commandBuffer, 0u, 1u, &viewport);
+			vkCmdSetViewport(_commandBuffer, 0, 1, &viewport);
 		}
 
-		if (_desc.scissor.extent.x != 0u && _desc.scissor.extent.y != 0u)
+		if (_desc.scissor.extent.x != 0 && _desc.scissor.extent.y != 0)
 		{
 			VkRect2D scissorRect = {
 				.offset = {
@@ -96,14 +96,14 @@ void executePass(
 					.width = _desc.scissor.extent.x,
 					.height = _desc.scissor.extent.y } };
 
-			vkCmdSetScissor(_commandBuffer, 0u, 1u, &scissorRect);
+			vkCmdSetScissor(_commandBuffer, 0, 1, &scissorRect);
 		}
 	}
 
-	if (_desc.pushConstants.byteSize != 0u && _desc.pushConstants.pData != nullptr)
+	if (_desc.pushConstants.byteSize != 0 && _desc.pushConstants.pData != nullptr)
 	{
 		vkCmdPushConstants(_commandBuffer, _desc.pipeline.pipelineLayout,
-			_desc.pipeline.pushConstants.stageFlags, 0u, _desc.pushConstants.byteSize, _desc.pushConstants.pData);
+			_desc.pipeline.pushConstants.stageFlags, 0, _desc.pushConstants.byteSize, _desc.pushConstants.pData);
 	}
 
 	vkCmdPushDescriptorSetWithTemplateKHR(_commandBuffer, _desc.pipeline.updateTemplate,

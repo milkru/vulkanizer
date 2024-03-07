@@ -90,7 +90,7 @@ namespace gui
 					stagingBuffer.resource,
 					rContext.fontTexture.resource,
 					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					1u, &bufferCopyRegion
+					1, &bufferCopyRegion
 				);
 
 				textureBarrier(_commandBuffer, rContext.fontTexture,

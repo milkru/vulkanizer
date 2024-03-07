@@ -53,6 +53,9 @@ static VkDescriptorType getDescriptorType(
 	case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE:
 		return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 
+	case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+		return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+
 	default:
 		assert(!"Unsupported SpvReflectDescriptorType!");
 		return {};

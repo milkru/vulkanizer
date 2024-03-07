@@ -6,7 +6,7 @@
 
 struct SharedSampler
 {
-	u32 shareCount = 0u;
+	u32 shareCount = 0;
 	VkSampler sampler = VK_NULL_HANDLE;
 };
 
@@ -32,8 +32,8 @@ static VkImageView createImageView(
 	imageViewCreateInfo.subresourceRange.aspectMask = getAspectMask(_format);
 	imageViewCreateInfo.subresourceRange.baseMipLevel = _baseMipLevel;
 	imageViewCreateInfo.subresourceRange.levelCount = _levelCount;
-	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0u;
-	imageViewCreateInfo.subresourceRange.layerCount = 1u;
+	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+	imageViewCreateInfo.subresourceRange.layerCount = 1;
 
 	VkImageView imageView;
 	VK_CALL(vkCreateImageView(_device, &imageViewCreateInfo, nullptr, &imageView));
@@ -87,7 +87,7 @@ static Sampler getOrCreateSampler(
 	VK_CALL(vkCreateSampler(_device, &samplerCreateInfo, nullptr, &sampler));
 
 	gSamplerCache[hash] = {
-		.shareCount = 1u,
+		.shareCount = 1,
 		.sampler = sampler };
 
 	return {
@@ -102,9 +102,9 @@ static void destroySampler(
 	auto& rSharedSampler = gSamplerCache[_rSampler.hash];
 
 	assert(rSharedSampler.sampler == _rSampler.resource);
-	assert(rSharedSampler.shareCount > 0u);
+	assert(rSharedSampler.shareCount > 0);
 
-	if (rSharedSampler.shareCount == 1u)
+	if (rSharedSampler.shareCount == 1)
 	{
 		vkDestroySampler(_rDevice.device, rSharedSampler.sampler, nullptr);
 	}
@@ -116,15 +116,15 @@ Texture createTexture(
 	Device& _rDevice,
 	TextureDesc _desc)
 {
-	assert(_desc.mipCount > 0u);
-	assert(_desc.width != 0u);
-	assert(_desc.height != 0u);
+	assert(_desc.mipCount > 0);
+	assert(_desc.width != 0);
+	assert(_desc.height != 0);
 	assert(_desc.format != VK_FORMAT_UNDEFINED);
 
 	Texture texture = {
 		.width = _desc.width,
 		.height = _desc.height,
-		.mipIndex = 0u,
+		.mipIndex = 0,
 		.mipCount = _desc.mipCount,
 		.format = _desc.format,
 		.resource = _desc.resource,
@@ -132,16 +132,16 @@ Texture createTexture(
 
 	if (texture.resource == VK_NULL_HANDLE)
 	{
-		assert(_desc.usage != 0u);
+		assert(_desc.usage != 0);
 
 		VkImageCreateInfo imageCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 		imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
 		imageCreateInfo.format = texture.format;
 		imageCreateInfo.extent.width = _desc.width;
 		imageCreateInfo.extent.height = _desc.height;
-		imageCreateInfo.extent.depth = 1u;
+		imageCreateInfo.extent.depth = 1;
 		imageCreateInfo.mipLevels = _desc.mipCount;
-		imageCreateInfo.arrayLayers = 1u;
+		imageCreateInfo.arrayLayers = 1;
 		imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 		imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageCreateInfo.usage = _desc.usage;
@@ -156,7 +156,7 @@ Texture createTexture(
 	}
 
 	texture.sampler = getOrCreateSampler(_rDevice.device, _desc.sampler);
-	texture.view = createImageView(_rDevice.device, texture.resource, texture.format, 0u, _desc.mipCount);
+	texture.view = createImageView(_rDevice.device, texture.resource, texture.format, 0, _desc.mipCount);
 
 	if (_desc.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
@@ -188,7 +188,7 @@ Texture createTextureView(
 	Device& _rDevice,
 	TextureViewDesc _desc)
 {
-	assert(_desc.mipCount > 0u);
+	assert(_desc.mipCount > 0);
 	assert(_desc.pParent);
 
 	Texture texture = *_desc.pParent;
@@ -223,8 +223,8 @@ void textureBarrier(
 		.aspectMask = getAspectMask(_rTexture.format),
 		.baseMipLevel = _rTexture.mipIndex,
 		.levelCount = _rTexture.mipCount,
-		.baseArrayLayer = 0u,
-		.layerCount = 1u };
+		.baseArrayLayer = 0,
+		.layerCount = 1 };
 
 	VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 	imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -241,8 +241,8 @@ void textureBarrier(
 		_commandBuffer,
 		_srcStageMask,
 		_dstStageMask,
-		0u,
-		0u, nullptr,
-		0u, nullptr,
-		1u, &imageMemoryBarrier);
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &imageMemoryBarrier);
 }

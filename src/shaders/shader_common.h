@@ -3,6 +3,8 @@
 
 #include "shader_interop.h"
 
+// TODO-MILKRU: Move these structs to interop as well
+
 // A structure has a scalar alignment equal to the largest scalar alignment of any of its members.
 // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout
 struct Vertex
@@ -25,7 +27,6 @@ struct Meshlet
 
 	float center[3];
 	float radius;
-
 	int8_t coneAxis[3];
 	int8_t coneCutoff;
 };
@@ -46,26 +47,32 @@ struct PerFrameData
 	int8_t bEnableMeshOcclusionCulling;
 	int8_t bEnableMeshletConeCulling;
 	int8_t bEnableMeshletFrustumCulling;
+
+	int padding0;
+	int padding1;
 };
 
 struct MeshLod
 {
 	uint indexCount;
 	uint firstIndex;
-
 	uint meshletOffset;
 	uint meshletCount;
 };
 
-struct Mesh
+struct MeshSubset
 {
 	uint vertexOffset;
-
-	float center[3];
-	float radius;
-
 	uint lodCount;
 	MeshLod lods[kMaxMeshLods];
+};
+
+struct Mesh
+{
+	float center[3];
+	float radius;
+	uint subsetCount;
+	MeshSubset subsets[kMaxMeshSubsets];
 };
 
 struct PerDrawData
@@ -86,6 +93,7 @@ struct DrawCommand
 	uint firstTask;
 
 	uint drawIndex;
+	uint subsetIndex;
 	uint lodIndex;
 };
 

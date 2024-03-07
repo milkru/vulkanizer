@@ -2,7 +2,7 @@
 
 struct Buffer
 {
-	VkDeviceSize byteSize = 0ull;
+	VkDeviceSize byteSize = 0;
 	VkBuffer resource = VK_NULL_HANDLE;
 	VmaAllocation allocation = VK_NULL_HANDLE;
 	void* pMappedData = nullptr;
@@ -16,9 +16,9 @@ enum class MemoryAccess : u8
 
 struct BufferDesc
 {
-	u64 byteSize = 0ull;                         // Buffer size in bytes.
+	u64 byteSize = 0;                            // Buffer size in bytes.
 	MemoryAccess access = MemoryAccess::Device;  // Buffer memory access.
-	VkBufferUsageFlags usage = 0u;               // Buffer usage flags.
+	VkBufferUsageFlags usage = 0;                // Buffer usage flags.
 	void* pContents = nullptr;                   // [Optional] Initial buffer contents.
 };
 

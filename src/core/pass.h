@@ -36,7 +36,7 @@ typedef std::initializer_list<Binding> Bindings;
 
 struct PushConstants
 {
-	u32 byteSize = 0u;
+	u32 byteSize = 0;
 	void* pData = nullptr;
 };
 

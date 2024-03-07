@@ -127,7 +127,7 @@ void getFrustumPlanes(
 	_pFrustumPlanes[3] = viewProjectionTransposed[3] - viewProjectionTransposed[1];
 	_pFrustumPlanes[4] = viewProjectionTransposed[3] - viewProjectionTransposed[2];
 
-	for (u32 frustumIndex = 0u; frustumIndex < kFrustumPlaneCount; ++frustumIndex)
+	for (u32 frustumIndex = 0; frustumIndex < kFrustumPlaneCount; ++frustumIndex)
 	{
 		v4& plane = _pFrustumPlanes[frustumIndex];
 		plane = plane / glm::length(v3(plane));

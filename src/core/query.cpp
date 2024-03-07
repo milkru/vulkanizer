@@ -16,7 +16,7 @@ static_assert(ARRAY_SIZE(kPipelineStats) == i32(StatType::Count));
 static u32 getQueryResultElementCount(
 	VkQueryType _type)
 {
-	return (_type == VK_QUERY_TYPE_PIPELINE_STATISTICS ? ARRAY_SIZE(kPipelineStats) : 1u) + 1u;
+	return (_type == VK_QUERY_TYPE_PIPELINE_STATISTICS ? ARRAY_SIZE(kPipelineStats) : 1) + 1;
 }
 
 QueryPool createQueryPool(
@@ -37,7 +37,7 @@ QueryPool createQueryPool(
 
 	if (_desc.type == VK_QUERY_TYPE_PIPELINE_STATISTICS)
 	{
-		for (u32 statisticIndex = 0u; statisticIndex < ARRAY_SIZE(kPipelineStats); ++statisticIndex)
+		for (u32 statisticIndex = 0; statisticIndex < ARRAY_SIZE(kPipelineStats); ++statisticIndex)
 		{
 			queryPoolCreateInfo.pipelineStatistics |= kPipelineStats[statisticIndex];
 		}
@@ -69,7 +69,7 @@ void resetQueryPool(
 {
 	if (_rQueryPool.status == QueryPoolStatus::Available)
 	{
-		vkCmdResetQueryPool(_commandBuffer, _rQueryPool.queryPoolVk, 0u, _rQueryPool.queryCapacity);
+		vkCmdResetQueryPool(_commandBuffer, _rQueryPool.queryPoolVk, 0, _rQueryPool.queryCapacity);
 		_rQueryPool.status = QueryPoolStatus::Reset;
 	}
 }
@@ -78,7 +78,7 @@ Queries allocateQueries(
 	QueryPool& _rQueryPool,
 	u32 _count)
 {
-	assert(_count > 0u);
+	assert(_count > 0);
 	assert(_rQueryPool.allocatedQueries + _count <= _rQueryPool.queryCapacity);
 
 	Queries queries{};
@@ -114,7 +114,7 @@ void beginQuery(
 
 	if (_rQueryPool.status == QueryPoolStatus::Reset)
 	{
-		vkCmdBeginQuery(_commandBuffer, _rQueryPool.queryPoolVk, _query, 0u);
+		vkCmdBeginQuery(_commandBuffer, _rQueryPool.queryPoolVk, _query, 0);
 	}
 }
 
@@ -135,7 +135,7 @@ void updateQueryPoolResults(
 	Device& _rDevice,
 	QueryPool& _rQueryPool)
 {
-	if (_rQueryPool.allocatedQueries == 0u)
+	if (_rQueryPool.allocatedQueries == 0)
 	{
 		return;
 	}
@@ -144,7 +144,7 @@ void updateQueryPoolResults(
 
 	// TODO-MILKRU: Theres something wrong with getting query results in some situations.
 	// Freeze camera completely breaks this. That might be a good clue. Was this present before? Check old code.
-	VkResult result = vkGetQueryPoolResults(_rDevice.device, _rQueryPool.queryPoolVk, 0u, _rQueryPool.allocatedQueries,
+	VkResult result = vkGetQueryPoolResults(_rDevice.device, _rQueryPool.queryPoolVk, 0, _rQueryPool.allocatedQueries,
 		_rQueryPool.queryResults.size() * sizeof(u64), _rQueryPool.queryResults.data(), resultElementCount * sizeof(u64),
 		VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
 

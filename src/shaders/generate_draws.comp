@@ -19,11 +19,12 @@ layout(binding = 2) writeonly buffer DrawCommands { DrawCommand drawCommands[]; 
 layout(binding = 3) buffer DrawCount { uint drawCount; };
 layout(binding = 4) buffer Visibility { int visibility[]; };
 layout(binding = 5) uniform sampler2D hzb;
+layout(binding = 6) uniform UniformBufferObject { PerFrameData perFrameData; };
 
-layout (push_constant) uniform block
-{
-    PerFrameData perFrameData;
-};
+//layout (push_constant) uniform block
+//{
+//    PerFrameData perFrameData2;
+//};
 
 // 2D Polyhedral Bounds of a Clipped, Perspective-Projected 3D Sphere
 // https://jcgt.org/published/0002/02/05/
@@ -127,48 +128,47 @@ void main()
 			}
 		}
 	}
-
-	bool bDrawMesh = bPrepass ? bVisible : bVisible && visibility[drawIndex] == 0;
-	uvec4 drawMeshBallot = subgroupBallot(bDrawMesh);
-
-	if (groupThreadIndex == 0)
-	{
-		uint drawMeshCount = subgroupBallotBitCount(drawMeshBallot);
-		drawOffset = atomicAdd(drawCount, drawMeshCount);
-	}
-
-	subgroupMemoryBarrierShared();
-
-	float meshToCameraDistance = distance(center, perFrameData.cameraPosition);
-	uint lodIndex = uint(max(1.0 +
-		log(meshToCameraDistance / perFrameData.lodTransitionBase) /
-		log(perFrameData.lodTransitionStep), 0.0));
-
-	lodIndex = perFrameData.forcedLod < 0 ?
-		min(lodIndex, mesh.lodCount - 1) :
-		min(perFrameData.forcedLod, mesh.lodCount - 1);
-
-	MeshLod meshLod = mesh.lods[lodIndex];
 	
+	bool bDrawMesh = bPrepass ? bVisible : bVisible && visibility[drawIndex] == 0;
+
 	if (bDrawMesh)
 	{
-		DrawCommand drawCommand;
-		drawCommand.indexCount = meshLod.indexCount;
-		drawCommand.instanceCount = 1;
-		drawCommand.firstIndex = meshLod.firstIndex;
-		drawCommand.vertexOffset = mesh.vertexOffset;
-
-		drawCommand.firstInstance = 0;
-		drawCommand.taskCount = (meshLod.meshletCount + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
-		drawCommand.firstTask = 0;
-
-		drawCommand.drawIndex = drawIndex;
-		drawCommand.lodIndex = lodIndex;
+		float meshToCameraDistance = distance(center, perFrameData.cameraPosition);
+		uint lodIndex = uint(max(1.0 +
+			log(meshToCameraDistance / perFrameData.lodTransitionBase) /
+			log(perFrameData.lodTransitionStep), 0.0));
 		
-		uint drawMeshIndex = subgroupBallotExclusiveBitCount(drawMeshBallot);
+		// TODO-MILKR: Could this be optimized with subgroups?
+		uint drawOffset = atomicAdd(drawCount, mesh.subsetCount);
 
-		uint drawCommandIndex = drawOffset + drawMeshIndex;
-		drawCommands[drawCommandIndex] = drawCommand;
+		// TODO-MILKR: Unroll?
+		for (uint subsetIndex = 0; subsetIndex < mesh.subsetCount; ++subsetIndex)
+		{
+			MeshSubset subset = mesh.subsets[subsetIndex];
+
+			uint subsetLodIndex = perFrameData.forcedLod < 0 ?
+				min(lodIndex, subset.lodCount - 1) :
+				min(perFrameData.forcedLod, subset.lodCount - 1);
+
+			MeshLod meshLod = subset.lods[subsetLodIndex];
+	
+			DrawCommand drawCommand;
+			drawCommand.indexCount = meshLod.indexCount;
+			drawCommand.instanceCount = 1;
+			drawCommand.firstIndex = meshLod.firstIndex;
+			drawCommand.vertexOffset = subset.vertexOffset;
+
+			drawCommand.firstInstance = 0;
+			drawCommand.taskCount = (meshLod.meshletCount + kShaderGroupSizeNV - 1) / kShaderGroupSizeNV;
+			drawCommand.firstTask = 0;
+
+			drawCommand.drawIndex = drawIndex;
+			drawCommand.subsetIndex = subsetIndex;
+			drawCommand.lodIndex = subsetLodIndex;
+		
+			uint drawCommandIndex = drawOffset + subsetIndex;
+			drawCommands[drawCommandIndex] = drawCommand;
+		}
 	}
 	
 	if (!bPrepass)

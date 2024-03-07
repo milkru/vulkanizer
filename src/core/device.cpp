@@ -388,7 +388,6 @@ Device createDevice(
 	vkGetDeviceQueue(device.device, device.graphicsQueue.index, 0, &device.graphicsQueue.queue);
 
 	device.allocator = createAllocator(device.instance, device.physicalDevice, device.device);
-
 	device.commandPool = createCommandPool(device.device, device.graphicsQueue.index);
 
 	return device;

@@ -8,10 +8,10 @@ struct Sampler
 
 struct Texture
 {
-	u32 width = 0u;
-	u32 height = 0u;
-	u32 mipIndex = 0u;
-	u32 mipCount = 1u;
+	u32 width = 0;
+	u32 height = 0;
+	u32 mipIndex = 0;
+	u32 mipCount = 1;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	Sampler sampler{};
 	VkImageView view = VK_NULL_HANDLE;
@@ -30,11 +30,11 @@ struct SamplerDesc
 
 struct TextureDesc
 {
-	u32 width = 0u;                                    // Texture width in pixels.
-	u32 height = 0u;                                   // Texture height in pixels.
-	u32 mipCount = 1u;                                 // Number of mipmaps.
+	u32 width = 0;                                     // Texture width in pixels.
+	u32 height = 0;                                    // Texture height in pixels.
+	u32 mipCount = 1;                                  // Number of mipmaps.
 	VkFormat format = VK_FORMAT_UNDEFINED;             // Texture pixel format.
-	VkImageUsageFlags usage = 0u;                      // Texture usage flags.
+	VkImageUsageFlags usage = 0;                       // Texture usage flags.
 	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;  // [Optional] Initial texture layout.
 	VkAccessFlags access = VK_ACCESS_NONE;             // [Optional] Initial texture access.
 	SamplerDesc sampler{};                             // Sampler descriptor.
@@ -43,8 +43,8 @@ struct TextureDesc
 
 struct TextureViewDesc
 {
-	u32 mipIndex = 0u;          // First mipmap used for texture view.
-	u32 mipCount = 1u;          // Number of mipmaps.
+	u32 mipIndex = 0;           // First mipmap used for texture view.
+	u32 mipCount = 1;           // Number of mipmaps.
 	SamplerDesc sampler{};      // Sampler descriptor.
 	Texture* pParent = nullptr; // [Optional] Original texture state for custom texture views.
 };

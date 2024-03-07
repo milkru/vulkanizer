@@ -55,8 +55,12 @@ void main()
 	uint drawIndex = drawCommands[gl_DrawID].drawIndex;
 	PerDrawData perDrawData = perDrawDataVector[drawIndex];
 
+	Mesh mesh = meshes[perDrawData.meshIndex];
+	uint subsetIndex = drawCommands[gl_DrawID].subsetIndex;
+	MeshSubset subset = mesh.subsets[subsetIndex];
+
+	uint globalVertexOffset = subset.vertexOffset;
 	vec3 meshletColor = getRandomColor(meshletIndex);
-	uint globalVertexOffset = meshes[perDrawData.meshIndex].vertexOffset;
 
 	[[unroll]]
 	for (uint loopIndex = 0; loopIndex < kVertexLoops; ++loopIndex)

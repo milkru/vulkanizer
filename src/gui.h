@@ -5,13 +5,13 @@ struct Settings
 {
 	const char* deviceName = "Unknown Device";
 	std::map<std::string, f64> gpuTimes;
-	u64 inputAssemblyVertices = 0ull;
-	u64 inputAssemblyPrimitives = 0ull;
-	u64 vertexShaderInvocations = 0ull;
-	u64 clippingInvocations = 0ull;
-	u64 clippingPrimitives = 0ull;
-	u64 fragmentShaderInvocations = 0ull;
-	u64 computeShaderInvocations = 0ull;
+	u64 inputAssemblyVertices = 0;
+	u64 inputAssemblyPrimitives = 0;
+	u64 vertexShaderInvocations = 0;
+	u64 clippingInvocations = 0;
+	u64 clippingPrimitives = 0;
+	u64 fragmentShaderInvocations = 0;
+	u64 computeShaderInvocations = 0;
 	i32 forcedLod = 0;
 	bool bForceMeshLodEnabled = false;
 	bool bFreezeCameraEnabled = false;

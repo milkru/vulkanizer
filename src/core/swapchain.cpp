@@ -8,10 +8,10 @@ static VkSurfaceFormatKHR chooseSwapchainSurfaceFormat(
 	VkSurfaceKHR _surface,
 	VkPhysicalDevice _physicalDevice)
 {
-	u32 surfaceFormatCount = 0u;
+	u32 surfaceFormatCount = 0;
 	VK_CALL(vkGetPhysicalDeviceSurfaceFormatsKHR(_physicalDevice, _surface, &surfaceFormatCount, nullptr));
 
-	assert(surfaceFormatCount > 0u);
+	assert(surfaceFormatCount > 0);
 
 	std::vector<VkSurfaceFormatKHR> availableSurfaceFormats(surfaceFormatCount);
 	VK_CALL(vkGetPhysicalDeviceSurfaceFormatsKHR(_physicalDevice, _surface, &surfaceFormatCount, availableSurfaceFormats.data()));
@@ -34,7 +34,7 @@ static VkPresentModeKHR chooseSwapchainPresentMode(
 {
 	if (!_bEnableVSync)
 	{
-		u32 presentModeCount = 0u;
+		u32 presentModeCount = 0;
 		VK_CALL(vkGetPhysicalDeviceSurfacePresentModesKHR(_physicalDevice, _surface, &presentModeCount, nullptr));
 
 		std::vector<VkPresentModeKHR> availablePresentModes(presentModeCount);
@@ -184,20 +184,20 @@ void submitAndPresent(
 	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-	submitInfo.waitSemaphoreCount = 1u;
+	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores = &_framePacingState.imageAvailableSemaphore;
 	submitInfo.pWaitDstStageMask = waitStages;
-	submitInfo.commandBufferCount = 1u;
+	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &_commandBuffer;
-	submitInfo.signalSemaphoreCount = 1u;
+	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &_framePacingState.renderFinishedSemaphore;
 
 	VK_CALL(vkQueueSubmit(_rDevice.graphicsQueue.queue, 1, &submitInfo, _framePacingState.inFlightFence));
 
 	VkPresentInfoKHR presentInfo = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
-	presentInfo.waitSemaphoreCount = 1u;
+	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pWaitSemaphores = &_framePacingState.renderFinishedSemaphore;
-	presentInfo.swapchainCount = 1u;
+	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = &_swapchain.swapchain;
 	presentInfo.pImageIndices = &_imageIndex;
 

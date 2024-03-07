@@ -22,10 +22,10 @@ namespace gpu::profiler
 		gContext = {
 			.timestampsQueryPool = createQueryPool(_rDevice, {
 				.type = VK_QUERY_TYPE_TIMESTAMP,
-				.queryCount = 12u }),
+				.queryCount = 12 }),
 			.statisticsQueryPool = createQueryPool(_rDevice, {
 				.type = VK_QUERY_TYPE_PIPELINE_STATISTICS,
-				.queryCount = 1u }) };
+				.queryCount = 1 }) };
 	}
 
 	void beginFrame(
@@ -93,7 +93,7 @@ namespace gpu::profiler
 		vkCmdEndDebugUtilsLabelEXT(commandBuffer);
 #endif // DEBUG_
 
-		writeTimestamp(commandBuffer, gContext.timestampsQueryPool, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queries.first + 1u);
+		writeTimestamp(commandBuffer, gContext.timestampsQueryPool, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queries.first + 1);
 	}
 
 	bool tryGetBlockResult(
@@ -111,7 +111,7 @@ namespace gpu::profiler
 		Queries queries = gContext.namedBlockQueries[_name];
 
 		u64 beginQueryResult = getQueryResult(gContext.timestampsQueryPool, queries.first);
-		u64 endQueryResult = getQueryResult(gContext.timestampsQueryPool, queries.first + 1u);
+		u64 endQueryResult = getQueryResult(gContext.timestampsQueryPool, queries.first + 1);
 
 		f64 timePeriodMillis = f64(_limits.timestampPeriod) * 1e-6;
 		_rResult = (endQueryResult - beginQueryResult) * timePeriodMillis;
@@ -126,7 +126,7 @@ namespace gpu::profiler
 	{
 		if (gContext.namedStatsQueries.find(_name) == gContext.namedStatsQueries.end())
 		{
-			gContext.namedStatsQueries[_name] = allocateQueries(gContext.statisticsQueryPool, /*queryCount*/ 1u);
+			gContext.namedStatsQueries[_name] = allocateQueries(gContext.statisticsQueryPool, /*queryCount*/ 1);
 		}
 
 		queries = gContext.namedStatsQueries[_name];
